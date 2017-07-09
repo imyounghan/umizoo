@@ -1,0 +1,267 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{3A400D75-9C72-43C5-8447-2070F333AAE3}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>Umizoo</RootNamespace>
+    <AssemblyName>Umizoo</AssemblyName>
+    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <TargetFrameworkProfile />
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+    <DocumentationFile>bin\Release\Umizoo.xml</DocumentationFile>
+  </PropertyGroup>
+  <PropertyGroup>
+    <SignAssembly>true</SignAssembly>
+  </PropertyGroup>
+  <PropertyGroup>
+    <AssemblyOriginatorKeyFile>..\\sunsoft.snk</AssemblyOriginatorKeyFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System" />
+    <Reference Include="System.ComponentModel.Composition" />
+    <Reference Include="System.ComponentModel.DataAnnotations" />
+    <Reference Include="System.configuration" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Runtime.Caching" />
+    <Reference Include="System.Runtime.Serialization" />
+    <Reference Include="System.ServiceModel" />
+    <Reference Include="System.Web" />
+    <Reference Include="System.Web.Extensions" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Configurations\ConnectionMode.cs" />
+    <Compile Include="Communication\ProtocolCode.cs" />
+    <Compile Include="Communication\SocketRequestServer.cs" />
+    <Compile Include="Communication\WcfRemotingClientManager.cs" />
+    <Compile Include="Communication\SocketClient.cs" />
+    <Compile Include="Communication\SocketRemotingClientManager.cs" />
+    <Compile Include="Communication\WcfClient.cs" />
+    <Compile Include="Communication\IContract.cs" />
+    <Compile Include="Communication\SocketReplyServer.cs" />
+    <Compile Include="Communication\WcfReplyServer.cs" />
+    <Compile Include="Communication\WcfRequestServer.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Configurations\ProcessingFlags.cs" />
+    <Compile Include="Infrastructure\Async\AsyncVoid.cs" />
+    <Compile Include="Infrastructure\Async\BeginInvokeDelegate.cs" />
+    <Compile Include="Infrastructure\Async\EndInvokeDelegate.cs" />
+    <Compile Include="Infrastructure\Async\OperationCounter.cs" />
+    <Compile Include="Infrastructure\Async\SimpleAsyncResult.cs" />
+    <Compile Include="Infrastructure\Async\WrappedAsyncResult.cs" />
+    <Compile Include="Configurations\Configuration.cs" />
+    <Compile Include="Configurations\ConfigurationSettings.cs" />
+    <Compile Include="Communication\Request.cs" />
+    <Compile Include="Communication\Response.cs" />
+    <Compile Include="Extensions\TaskExtensions.cs" />
+    <Compile Include="Ensure.cs" />
+    <Compile Include="Infrastructure\Composition\Interception\GetNextInterceptorDelegate.cs" />
+    <Compile Include="Infrastructure\Composition\Interception\IInterceptor.cs" />
+    <Compile Include="Infrastructure\Composition\Interception\IInterceptorProvider.cs" />
+    <Compile Include="Infrastructure\Composition\Interception\IMethodInvocation.cs" />
+    <Compile Include="Infrastructure\Composition\Interception\IMethodReturn.cs" />
+    <Compile Include="Infrastructure\Composition\Interception\InterceptorProvider.cs" />
+    <Compile Include="Infrastructure\Composition\Interception\InvokeInterceptorDelegate.cs" />
+    <Compile Include="Infrastructure\Composition\Interception\IParameterCollection.cs" />
+    <Compile Include="Infrastructure\Composition\Interception\MethodInvocation.cs" />
+    <Compile Include="Infrastructure\Composition\Interception\MethodReturn.cs" />
+    <Compile Include="Infrastructure\Composition\Interception\ParameterCollection.cs" />
+    <Compile Include="Infrastructure\Composition\Interception\Pipeline\InterceptorPipeline.cs" />
+    <Compile Include="Infrastructure\Composition\Interception\Pipeline\InterceptorPipelineKey.cs" />
+    <Compile Include="Infrastructure\Composition\Interception\Pipeline\InterceptorPipelineManager.cs" />
+    <Compile Include="Infrastructure\Composition\InterceptorAttribute.cs" />
+    <Compile Include="Infrastructure\MessageBase.cs" />
+    <Compile Include="Infrastructure\Composition\TypeRegistration.cs" />
+    <Compile Include="Infrastructure\Remoting\RemotingTimeoutException.cs" />
+    <Compile Include="Infrastructure\Socketing\ITcpConnection.cs" />
+    <Compile Include="Infrastructure\Remoting\RemotingRequestException.cs" />
+    <Compile Include="Infrastructure\Remoting\RemotingServerUnAvailableException.cs" />
+    <Compile Include="Infrastructure\Remoting\ResponseFutureAddFailedException.cs" />
+    <Compile Include="Infrastructure\Remoting\IRequestHandler.cs" />
+    <Compile Include="Infrastructure\Remoting\IRequestHandlerContext.cs" />
+    <Compile Include="Infrastructure\Remoting\IResponseHandler.cs" />
+    <Compile Include="Infrastructure\Remoting\RemotingRequest.cs" />
+    <Compile Include="Infrastructure\Remoting\RemotingResponse.cs" />
+    <Compile Include="Infrastructure\Remoting\RemotingUtil.cs" />
+    <Compile Include="Infrastructure\Remoting\ResponseFuture.cs" />
+    <Compile Include="Infrastructure\Remoting\SocketRemotingClient.cs" />
+    <Compile Include="Infrastructure\Remoting\SocketRemotingServer.cs" />
+    <Compile Include="Infrastructure\Remoting\SocketRequestHandlerContext.cs" />
+    <Compile Include="Infrastructure\SingleEntryGate.cs" />
+    <Compile Include="Infrastructure\StandardMetadata.cs" />
+    <Compile Include="Infrastructure\UnrecoverableException.cs" />
+    <Compile Include="Infrastructure\Utilities\ByteUtil.cs" />
+    <Compile Include="Infrastructure\Utilities\FlowControlUtil.cs" />
+    <Compile Include="Infrastructure\Socketing\BufferManagement\BufferItemCreator.cs" />
+    <Compile Include="Infrastructure\Socketing\BufferManagement\BufferPool.cs" />
+    <Compile Include="Infrastructure\Socketing\BufferManagement\IBufferPool.cs" />
+    <Compile Include="Infrastructure\Socketing\BufferManagement\IntelliPool.cs" />
+    <Compile Include="Infrastructure\Socketing\BufferManagement\IPool.cs" />
+    <Compile Include="Infrastructure\Socketing\BufferManagement\IPoolItemCreator.cs" />
+    <Compile Include="Infrastructure\Socketing\ClientSocket.cs" />
+    <Compile Include="Infrastructure\Socketing\Framing\IMessageFramer.cs" />
+    <Compile Include="Infrastructure\Socketing\Framing\LengthPrefixMessageFramer.cs" />
+    <Compile Include="Infrastructure\Socketing\IConnectionEventListener.cs" />
+    <Compile Include="Infrastructure\Socketing\ServerSocket.cs" />
+    <Compile Include="Infrastructure\Socketing\SocketSetting.cs" />
+    <Compile Include="Infrastructure\Utilities\SocketUtil.cs" />
+    <Compile Include="Infrastructure\Socketing\TcpConnection.cs" />
+    <Compile Include="LogManager.cs" />
+    <Compile Include="Messaging\BusExtentions.cs" />
+    <Compile Include="Messaging\CentralService.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Messaging\CommandReturnMode.cs" />
+    <Compile Include="Messaging\Handling\EventConsumer.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Messaging\HandleStatus.cs" />
+    <Compile Include="Messaging\Handling\IQueryHandler.cs" />
+    <Compile Include="Messaging\Handling\PublishableExceptionConsumer.cs" />
+    <Compile Include="Messaging\Handling\ResultConsumer.cs" />
+    <Compile Include="Messaging\Handling\ResultConsumerWithLocal.cs" />
+    <Compile Include="Messaging\Handling\ResultConsumerWithSocket.cs" />
+    <Compile Include="Messaging\Handling\ResultConsumerWithWcf.cs" />
+    <Compile Include="Messaging\IResultManager.cs" />
+    <Compile Include="Messaging\ResultManager.cs" />
+    <Compile Include="Messaging\ICommandResult.cs" />
+    <Compile Include="Messaging\IQueryResult.cs" />
+    <Compile Include="Messaging\IQueryService.cs" />
+    <Compile Include="Messaging\IResult.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Messaging\ICommandService.cs" />
+    <Compile Include="Messaging\IQuery.cs" />
+    <Compile Include="Extensions\ConcurrentDictionaryExtensions.cs" />
+    <Compile Include="Infrastructure\Composition\DefaultObjectContainer.cs" />
+    <Compile Include="Infrastructure\DefaultTextSerializer.cs" />
+    <Compile Include="Infrastructure\DisposableObject.cs" />
+    <Compile Include="Extensions\DictionaryExtentions.cs" />
+    <Compile Include="Extensions\EnumerableExtentions.cs" />
+    <Compile Include="Extensions\ObjectExtentions.cs" />
+    <Compile Include="Extensions\TypeExtensions.cs" />
+    <Compile Include="Infrastructure\Composition\IInitializer.cs" />
+    <Compile Include="Infrastructure\IRoutingProvider.cs" />
+    <Compile Include="Infrastructure\ILogger.cs" />
+    <Compile Include="Infrastructure\IProcessor.cs" />
+    <Compile Include="Infrastructure\ITextSerializer.cs" />
+    <Compile Include="Infrastructure\IUniquelyIdentifiable.cs" />
+    <Compile Include="Infrastructure\ObjectId.cs" />
+    <Compile Include="Infrastructure\Processor.cs" />
+    <Compile Include="Messaging\IVersionedEvent.cs" />
+    <Compile Include="Messaging\PageQuery.cs" />
+    <Compile Include="Messaging\Handling\QueryConsumer.cs" />
+    <Compile Include="Messaging\HandleResult.cs" />
+    <Compile Include="Messaging\QueryResult.cs" />
+    <Compile Include="Messaging\SourceInfo.cs" />
+    <Compile Include="Infrastructure\Composition\IObjectContainer.cs" />
+    <Compile Include="Infrastructure\Composition\Lifecycle.cs" />
+    <Compile Include="Infrastructure\Composition\LifecycleAttribute.cs" />
+    <Compile Include="Messaging\Command.cs" />
+    <Compile Include="Messaging\Handling\CommandConsumer.cs" />
+    <Compile Include="Messaging\CommandResult.cs" />
+    <Compile Include="Messaging\Command`1.cs" />
+    <Compile Include="Messaging\Envelope.cs" />
+    <Compile Include="Messaging\Event.cs" />
+    <Compile Include="Messaging\EventPublishedVersionInMemory.cs" />
+    <Compile Include="Messaging\EventStoreInMemory.cs" />
+    <Compile Include="Messaging\Handling\CommandContext.cs" />
+    <Compile Include="Messaging\Handling\EventContext.cs" />
+    <Compile Include="Messaging\IEvent.cs" />
+    <Compile Include="Messaging\IEventPublishedVersionStore.cs" />
+    <Compile Include="Messaging\IMessageBus.cs" />
+    <Compile Include="Messaging\Handling\ActionExecutedContext.cs" />
+    <Compile Include="Messaging\Handling\ActionExecutingContext.cs" />
+    <Compile Include="Messaging\Handling\ExceptionContext.cs" />
+    <Compile Include="Messaging\Handling\Filter.cs" />
+    <Compile Include="Messaging\Handling\FilterAttribute.cs" />
+    <Compile Include="Messaging\Handling\FilterAttributeFilterProvider.cs" />
+    <Compile Include="Messaging\Handling\FilterInfo.cs" />
+    <Compile Include="Messaging\Handling\FilterProviderCollection.cs" />
+    <Compile Include="Messaging\Handling\FilterProviders.cs" />
+    <Compile Include="Messaging\Handling\FilterScope.cs" />
+    <Compile Include="Messaging\Handling\HandlerContext.cs" />
+    <Compile Include="Messaging\Handling\HandlerInstanceFilterProvider.cs" />
+    <Compile Include="Messaging\Handling\HandlerNotFoundException.cs" />
+    <Compile Include="Messaging\Handling\IActionFilter.cs" />
+    <Compile Include="Messaging\Handling\ICommandContext.cs" />
+    <Compile Include="Messaging\Handling\ICommandHandler.cs" />
+    <Compile Include="Messaging\Handling\IEnvelopedMessageHandler.cs" />
+    <Compile Include="Messaging\Handling\IEventContext.cs" />
+    <Compile Include="Messaging\Handling\IEventHandler.cs" />
+    <Compile Include="Messaging\Handling\IExceptionFilter.cs" />
+    <Compile Include="Messaging\Handling\IFilter.cs" />
+    <Compile Include="Messaging\Handling\IFilterProvider.cs" />
+    <Compile Include="Messaging\Handling\IHandler.cs" />
+    <Compile Include="Messaging\Handling\IMessageHandler.cs" />
+    <Compile Include="Messaging\ICommand.cs" />
+    <Compile Include="Messaging\IEventStore.cs" />
+    <Compile Include="Messaging\IEventPublisher.cs" />
+    <Compile Include="Messaging\IMessage.cs" />
+    <Compile Include="Messaging\IMessageReceiver.cs" />
+    <Compile Include="Messaging\IPublishableException.cs" />
+    <Compile Include="Messaging\Handling\MessageConsumer.cs" />
+    <Compile Include="Messaging\MessageProducer.cs" />
+    <Compile Include="Messaging\MessageReceiver.cs" />
+    <Compile Include="Messaging\TraceInfo.cs" />
+    <Compile Include="Infrastructure\Composition\ObjectContainer.cs" />
+    <Compile Include="Messaging\VersionedEvent.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Infrastructure\Composition\RegisterAttribute.cs" />
+    <Compile Include="Seeds\AggregateRoot.cs" />
+    <Compile Include="Seeds\CacheRegionAttribute.cs" />
+    <Compile Include="Seeds\Entity.cs" />
+    <Compile Include="Seeds\EntityNotFoundException.cs" />
+    <Compile Include="Seeds\EventSourced.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Seeds\IAggregateRoot.cs" />
+    <Compile Include="Seeds\ICache.cs" />
+    <Compile Include="Seeds\IEventSourced.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Seeds\InnerHandlerProvider.cs" />
+    <Compile Include="Seeds\IRepository.cs" />
+    <Compile Include="Seeds\ISnapshotStore.cs" />
+    <Compile Include="Seeds\LocalCache.cs" />
+    <Compile Include="Seeds\MemoryRepository.cs" />
+    <Compile Include="Seeds\NoneSnapshotStore.cs" />
+    <Compile Include="Seeds\ValueObject.cs" />
+  </ItemGroup>
+  <ItemGroup />
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>
