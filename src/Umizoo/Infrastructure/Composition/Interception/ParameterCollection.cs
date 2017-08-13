@@ -1,4 +1,9 @@
-﻿using System;
+﻿// Copyright © 2015 ~ 2017 Sunsoft Studio, All rights reserved.
+// Umizoo is a framework can help you develop DDD and CQRS style applications.
+// 
+// Created by young.han with Visual Studio 2017 on 2017-08-07.
+
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -6,16 +11,13 @@ using System.Reflection;
 
 namespace Umizoo.Infrastructure.Composition.Interception
 {
-    /// <summary>
-    /// <see cref="IParameterCollection"/> 的实现类
-    /// </summary>
     public class ParameterCollection : IParameterCollection
     {
         struct ArgumentInfo
         {
-            public int Index;
-            public string Name;
-            public ParameterInfo ParameterInfo;
+            public readonly int Index;
+            public readonly string Name;
+            public readonly ParameterInfo ParameterInfo;
 
             public ArgumentInfo(int index, ParameterInfo parameter)
             {
@@ -25,7 +27,7 @@ namespace Umizoo.Infrastructure.Composition.Interception
             }
         }
 
-        private readonly List<ArgumentInfo> parameters;
+        private readonly List<ParameterCollection.ArgumentInfo> parameters;
         private readonly object[] arguments;
 
         /// <summary>
@@ -33,14 +35,14 @@ namespace Umizoo.Infrastructure.Composition.Interception
         /// </summary>
         public ParameterCollection(object[] arguments, ParameterInfo[] parameters, Predicate<ParameterInfo> isArgumentPartOfCollection)
         {
-            arguments.NotNull("arguments");
-            parameters.NotNull("parameters");
+            Assertions.NotNull(arguments, "arguments");
+            Assertions.NotNull(parameters, "parameters");
 
             this.arguments = arguments;
             this.parameters = new List<ArgumentInfo>();
-            
-            for(int index = 0; index < parameters.Length; ++index) {
-                if(isArgumentPartOfCollection(parameters[index])) {
+
+            for (int index = 0; index < parameters.Length; ++index) {
+                if (isArgumentPartOfCollection(parameters[index])) {
                     this.parameters.Add(new ArgumentInfo(index, parameters[index]));
                 }
             }
@@ -49,13 +51,13 @@ namespace Umizoo.Infrastructure.Composition.Interception
         private int IndexForInputParameterName(string parameterName)
         {
             var index = parameters.FindIndex(p => p.Name == parameterName);
-            if(index == -1)
+            if (index == -1)
                 throw new ArgumentException("Invalid parameter Name", "paramName");
 
             return index;
         }
 
-        #region IParameterCollection 成员
+
         /// <summary>
         /// 通过参数名称获取该参数的值
         /// </summary>
@@ -64,6 +66,14 @@ namespace Umizoo.Infrastructure.Composition.Interception
             get
             {
                 return arguments[parameters[IndexForInputParameterName(parameterName)].Index];
+            }
+        }
+
+        public object this[int index]
+        {
+            get
+            {
+                return arguments[index];
             }
         }
 
@@ -89,9 +99,6 @@ namespace Umizoo.Infrastructure.Composition.Interception
             return this.GetParameterInfo(IndexForInputParameterName(parameterName));
         }
 
-        #endregion        
-
-        #region ICollection 成员
         /// <summary>
         /// 从特定的索引处开始，将当前的元素复制到一个 <see cref="Array"/> 中
         /// </summary>
@@ -126,20 +133,15 @@ namespace Umizoo.Infrastructure.Composition.Interception
         {
             get { return this; }
         }
-
-        #endregion
-
-        #region IEnumerable 成员
+        
         /// <summary>
         /// 返回一个循环访问集合的枚举数。
         /// </summary>
         public IEnumerator GetEnumerator()
         {
-            for(int i = 0; i < parameters.Count; ++i) {
+            for (int i = 0; i < parameters.Count; ++i) {
                 yield return arguments[parameters[i].Index];
             }
         }
-
-        #endregion
     }
 }

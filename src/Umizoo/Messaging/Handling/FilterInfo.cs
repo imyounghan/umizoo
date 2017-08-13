@@ -1,53 +1,45 @@
-﻿
+﻿// Copyright © 2015 ~ 2017 Sunsoft Studio, All rights reserved.
+// Umizoo is a framework can help you develop DDD and CQRS style applications.
+// 
+// Created by young.han with Visual Studio 2017 on 2017-08-09.
+
+using System.Collections.Generic;
+using System.Linq;
+using Umizoo.Infrastructure.Filtering;
 
 namespace Umizoo.Messaging.Handling
 {
-    using System.Collections.Generic;
-    using System.Linq;
-
     /// <summary>
-    /// 封装有关可用的操作过滤器的信息。
+    ///     封装有关可用的操作过滤器的信息。
     /// </summary>
     public class FilterInfo
     {
-        private List<IActionFilter> actionFilters;
-        private List<IExceptionFilter> exceptionFilters;
+        private readonly List<IActionFilter> actionFilters;
+        private readonly List<IExceptionFilter> exceptionFilters;
 
         /// <summary>
-        /// 初始化 <see cref="FilterInfo"/> 类的新实例。
+        ///     初始化 <see cref="FilterInfo" /> 类的新实例。
         /// </summary>
         /// <param name="filters">过滤器集合</param>
         public FilterInfo(IEnumerable<Filter> filters)
         {
-            this.actionFilters = new List<IActionFilter>();
-            this.exceptionFilters = new List<IExceptionFilter>();
+            actionFilters = new List<IActionFilter>();
+            exceptionFilters = new List<IExceptionFilter>();
 
             var filterInstances = filters.Select(f => f.Instance).ToList();
 
-            this.actionFilters.AddRange(filterInstances.OfType<IActionFilter>());
-            this.exceptionFilters.AddRange(filterInstances.OfType<IExceptionFilter>());
+            actionFilters.AddRange(filterInstances.OfType<IActionFilter>());
+            exceptionFilters.AddRange(filterInstances.OfType<IExceptionFilter>());
         }
 
         /// <summary>
-        /// 获取应用程序中的所有操作过滤器。
+        ///     获取应用程序中的所有操作过滤器。
         /// </summary>
-        public IList<IActionFilter> ActionFilters
-        {
-            get
-            {
-                return this.actionFilters;
-            }
-        }
+        public IList<IActionFilter> ActionFilters => actionFilters;
 
         /// <summary>
-        /// 获取应用程序中的所有异常过滤器。
+        ///     获取应用程序中的所有异常过滤器。
         /// </summary>
-        public IList<IExceptionFilter> ExceptionFilters
-        {
-            get
-            {
-                return this.exceptionFilters;
-            }
-        }
+        public IList<IExceptionFilter> ExceptionFilters => exceptionFilters;
     }
 }

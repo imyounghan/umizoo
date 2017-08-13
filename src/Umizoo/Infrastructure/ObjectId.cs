@@ -1,68 +1,60 @@
-﻿
+﻿// Copyright © 2015 ~ 2017 Sunsoft Studio, All rights reserved.
+// Umizoo is a framework can help you develop DDD and CQRS style applications.
+// 
+// Created by young.han with Visual Studio 2017 on 2017-08-06.
+
+
+using System;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using System.Security;
+using System.Threading;
 
 namespace Umizoo.Infrastructure
 {
-    using System;
-    using System.Diagnostics;
-    using System.Linq;
-    using System.Runtime.CompilerServices;
-    using System.Security.Cryptography;
-    using System.Text;
-    using System.Threading;
-
-    /// <summary>Represents an ObjectId
+    /// <summary>
+    ///     Represents an ObjectId
     /// </summary>
+    /// <remarks>https://github.com/mongodb/mongo-csharp-driver</remarks>
     [Serializable]
     public struct ObjectId : IComparable<ObjectId>, IEquatable<ObjectId>
     {
         // private static fields
-        private static readonly DateTime __unixEpoch;
-        private static readonly long __dateTimeMaxValueMillisecondsSinceEpoch;
-        private static readonly long __dateTimeMinValueMillisecondsSinceEpoch;
-        private static ObjectId __emptyInstance = default(ObjectId);
-        private static int __staticMachine;
-        private static short __staticPid;
-        private static int __staticIncrement; // high byte will be masked out when generating new ObjectId
-        private static uint[] _lookup32;
+        private static readonly int __staticMachine = (GetMachineHash() + GetAppDomainId()) & 0x00ffffff;
+        private static readonly short __staticPid = GetPid();
+        private static int __staticIncrement = new Random().Next();
+        private static readonly DateTime __unixEpoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        // we're using 14 bytes instead of 12 to hold the ObjectId in memory but unlike a byte[] there is no additional object on the heap
-        // the extra two bytes are not visible to anyone outside of this class and they buy us considerable simplification
-        // an additional advantage of this representation is that it will serialize to JSON without any 64 bit overflow problems
-        private int _timestamp;
-        private int _machine;
-        private short _pid;
-        private int _increment;
-
-        // static constructor
-        static ObjectId()
-        {
-            __unixEpoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-            __dateTimeMaxValueMillisecondsSinceEpoch = (DateTime.MaxValue - __unixEpoch).Ticks / 10000;
-            __dateTimeMinValueMillisecondsSinceEpoch = (DateTime.MinValue - __unixEpoch).Ticks / 10000;
-            __staticMachine = GetMachineHash();
-            __staticIncrement = (new Random()).Next();
-            __staticPid = (short)GetCurrentProcessId();
-            _lookup32 = Enumerable.Range(0, 256).Select(i => {
-                string s = i.ToString("x2");
-                return ((uint)s[0]) + ((uint)s[1] << 16);
-            }).ToArray();
-        }
+        // private fields
+        private readonly int _a;
+        private readonly int _b;
+        private readonly int _c;
 
         // constructors
         /// <summary>
-        /// Initializes a new instance of the ObjectId class.
+        ///     Initializes a new instance of the ObjectId class.
         /// </summary>
         /// <param name="bytes">The bytes.</param>
         public ObjectId(byte[] bytes)
         {
-            if(bytes == null) {
-                throw new ArgumentNullException("bytes");
-            }
-            Unpack(bytes, out _timestamp, out _machine, out _pid, out _increment);
+            if (bytes == null) throw new ArgumentNullException("bytes");
+            if (bytes.Length != 12) throw new ArgumentException("Byte array must be 12 bytes long", "bytes");
+
+            FromByteArray(bytes, 0, out _a, out _b, out _c);
         }
 
         /// <summary>
-        /// Initializes a new instance of the ObjectId class.
+        ///     Initializes a new instance of the ObjectId class.
+        /// </summary>
+        /// <param name="bytes">The bytes.</param>
+        /// <param name="index">The index into the byte array where the ObjectId starts.</param>
+        internal ObjectId(byte[] bytes, int index)
+        {
+            FromByteArray(bytes, index, out _a, out _b, out _c);
+        }
+
+        /// <summary>
+        ///     Initializes a new instance of the ObjectId class.
         /// </summary>
         /// <param name="timestamp">The timestamp (expressed as a DateTime).</param>
         /// <param name="machine">The machine hash.</param>
@@ -70,10 +62,11 @@ namespace Umizoo.Infrastructure
         /// <param name="increment">The increment.</param>
         public ObjectId(DateTime timestamp, int machine, short pid, int increment)
             : this(GetTimestampFromDateTime(timestamp), machine, pid, increment)
-        { }
+        {
+        }
 
         /// <summary>
-        /// Initializes a new instance of the ObjectId class.
+        ///     Initializes a new instance of the ObjectId class.
         /// </summary>
         /// <param name="timestamp">The timestamp.</param>
         /// <param name="machine">The machine hash.</param>
@@ -81,84 +74,65 @@ namespace Umizoo.Infrastructure
         /// <param name="increment">The increment.</param>
         public ObjectId(int timestamp, int machine, short pid, int increment)
         {
-            if((machine & 0xff000000) != 0) {
-                throw new ArgumentOutOfRangeException("machine", "The machine value must be between 0 and 16777215 (it must fit in 3 bytes).");
-            }
-            if((increment & 0xff000000) != 0) {
-                throw new ArgumentOutOfRangeException("increment", "The increment value must be between 0 and 16777215 (it must fit in 3 bytes).");
-            }
+            if ((machine & 0xff000000) != 0)
+                throw new ArgumentOutOfRangeException("machine",
+                    "The machine value must be between 0 and 16777215 (it must fit in 3 bytes).");
+            if ((increment & 0xff000000) != 0)
+                throw new ArgumentOutOfRangeException("increment",
+                    "The increment value must be between 0 and 16777215 (it must fit in 3 bytes).");
 
-            _timestamp = timestamp;
-            _machine = machine;
-            _pid = pid;
-            _increment = increment;
+            _a = timestamp;
+            _b = (machine << 8) | ((pid >> 8) & 0xff);
+            _c = (pid << 24) | increment;
         }
 
         /// <summary>
-        /// Initializes a new instance of the ObjectId class.
+        ///     Initializes a new instance of the ObjectId class.
         /// </summary>
         /// <param name="value">The value.</param>
         public ObjectId(string value)
         {
-            if(value == null) {
-                throw new ArgumentNullException("value");
-            }
-            Unpack(ParseHexString(value), out _timestamp, out _machine, out _pid, out _increment);
+            if (value == null) throw new ArgumentNullException("value");
+
+            var bytes = ParseHexString(value);
+            FromByteArray(bytes, 0, out _a, out _b, out _c);
         }
 
         // public static properties
         /// <summary>
-        /// Gets an instance of ObjectId where the value is empty.
+        ///     Gets an instance of ObjectId where the value is empty.
         /// </summary>
-        public static ObjectId Empty
-        {
-            get { return __emptyInstance; }
-        }
+        public static ObjectId Empty { get; } = default(ObjectId);
 
-        //// public properties
-        ///// <summary>
-        ///// Gets the timestamp.
-        ///// </summary>
-        //public int Timestamp
-        //{
-        //    get { return _timestamp; }
-        //}
+        // public properties
+        /// <summary>
+        ///     Gets the timestamp.
+        /// </summary>
+        public int Timestamp => _a;
 
-        ///// <summary>
-        ///// Gets the machine.
-        ///// </summary>
-        //public int Machine
-        //{
-        //    get { return _machine; }
-        //}
+        /// <summary>
+        ///     Gets the machine.
+        /// </summary>
+        public int Machine => (_b >> 8) & 0xffffff;
 
-        ///// <summary>
-        ///// Gets the PID.
-        ///// </summary>
-        //public short Pid
-        //{
-        //    get { return _pid; }
-        //}
+        /// <summary>
+        ///     Gets the PID.
+        /// </summary>
+        public short Pid => (short) (((_b << 8) & 0xff00) | ((_c >> 24) & 0x00ff));
 
-        ///// <summary>
-        ///// Gets the increment.
-        ///// </summary>
-        //public int Increment
-        //{
-        //    get { return _increment; }
-        //}
+        /// <summary>
+        ///     Gets the increment.
+        /// </summary>
+        public int Increment => _c & 0xffffff;
 
-        ///// <summary>
-        ///// Gets the creation time (derived from the timestamp).
-        ///// </summary>
-        //public DateTime CreationTime
-        //{
-        //    get { return __unixEpoch.AddSeconds(_timestamp); }
-        //}
+        /// <summary>
+        ///     Gets the creation time (derived from the timestamp).
+        /// </summary>
+        public DateTime CreationTime => __unixEpoch.AddSeconds(Timestamp);
 
         // public operators
         /// <summary>
-        /// Compares two ObjectIds.
+        ///     Compares two ObjectIds.
         /// </summary>
         /// <param name="lhs">The first ObjectId.</param>
         /// <param name="rhs">The other ObjectId</param>
@@ -169,7 +143,7 @@ namespace Umizoo.Infrastructure
         }
 
         /// <summary>
-        /// Compares two ObjectIds.
+        ///     Compares two ObjectIds.
         /// </summary>
         /// <param name="lhs">The first ObjectId.</param>
         /// <param name="rhs">The other ObjectId</param>
@@ -180,7 +154,7 @@ namespace Umizoo.Infrastructure
         }
 
         /// <summary>
-        /// Compares two ObjectIds.
+        ///     Compares two ObjectIds.
         /// </summary>
         /// <param name="lhs">The first ObjectId.</param>
         /// <param name="rhs">The other ObjectId.</param>
@@ -191,7 +165,7 @@ namespace Umizoo.Infrastructure
         }
 
         /// <summary>
-        /// Compares two ObjectIds.
+        ///     Compares two ObjectIds.
         /// </summary>
         /// <param name="lhs">The first ObjectId.</param>
         /// <param name="rhs">The other ObjectId.</param>
@@ -202,7 +176,7 @@ namespace Umizoo.Infrastructure
         }
 
         /// <summary>
-        /// Compares two ObjectIds.
+        ///     Compares two ObjectIds.
         /// </summary>
         /// <param name="lhs">The first ObjectId.</param>
         /// <param name="rhs">The other ObjectId</param>
@@ -213,7 +187,7 @@ namespace Umizoo.Infrastructure
         }
 
         /// <summary>
-        /// Compares two ObjectIds.
+        ///     Compares two ObjectIds.
         /// </summary>
         /// <param name="lhs">The first ObjectId.</param>
         /// <param name="rhs">The other ObjectId</param>
@@ -225,7 +199,7 @@ namespace Umizoo.Infrastructure
 
         // public static methods
         /// <summary>
-        /// Generates a new ObjectId with a unique value.
+        ///     Generates a new ObjectId with a unique value.
         /// </summary>
         /// <returns>An ObjectId.</returns>
         public static ObjectId GenerateNewId()
@@ -234,7 +208,7 @@ namespace Umizoo.Infrastructure
         }
 
         /// <summary>
-        /// Generates a new ObjectId with a unique value (with the timestamp component based on a given DateTime).
+        ///     Generates a new ObjectId with a unique value (with the timestamp component based on a given DateTime).
         /// </summary>
         /// <param name="timestamp">The timestamp component (expressed as a DateTime).</param>
         /// <returns>An ObjectId.</returns>
@@ -244,70 +218,120 @@ namespace Umizoo.Infrastructure
         }
 
         /// <summary>
-        /// Generates a new ObjectId with a unique value (with the given timestamp).
+        ///     Generates a new ObjectId with a unique value (with the given timestamp).
         /// </summary>
         /// <param name="timestamp">The timestamp component.</param>
         /// <returns>An ObjectId.</returns>
         public static ObjectId GenerateNewId(int timestamp)
         {
-            int increment = Interlocked.Increment(ref __staticIncrement) & 0x00ffffff; // only use low order 3 bytes
+            var increment = Interlocked.Increment(ref __staticIncrement) & 0x00ffffff; // only use low order 3 bytes
             return new ObjectId(timestamp, __staticMachine, __staticPid, increment);
         }
 
         /// <summary>
-        /// Generates a new ObjectId string with a unique value.
+        ///     Packs the components of an ObjectId into a byte array.
         /// </summary>
-        /// <returns>The string value of the new generated ObjectId.</returns>
-        public static string GenerateNewStringId()
+        /// <param name="timestamp">The timestamp.</param>
+        /// <param name="machine">The machine hash.</param>
+        /// <param name="pid">The PID.</param>
+        /// <param name="increment">The increment.</param>
+        /// <returns>A byte array.</returns>
+        public static byte[] Pack(int timestamp, int machine, short pid, int increment)
         {
-            return GenerateNewId().ToString();
-        }
+            if ((machine & 0xff000000) != 0)
+                throw new ArgumentOutOfRangeException("machine",
+                    "The machine value must be between 0 and 16777215 (it must fit in 3 bytes).");
+            if ((increment & 0xff000000) != 0)
+                throw new ArgumentOutOfRangeException("increment",
+                    "The increment value must be between 0 and 16777215 (it must fit in 3 bytes).");
 
-
-        private static byte[] Pack(int timestamp, int machine, short pid, int increment)
-        {
-            if((machine & 0xff000000) != 0) {
-                throw new ArgumentOutOfRangeException("machine", "The machine value must be between 0 and 16777215 (it must fit in 3 bytes).");
-            }
-            if((increment & 0xff000000) != 0) {
-                throw new ArgumentOutOfRangeException("increment", "The increment value must be between 0 and 16777215 (it must fit in 3 bytes).");
-            }
-
-            byte[] bytes = new byte[12];
-            bytes[0] = (byte)(timestamp >> 24);
-            bytes[1] = (byte)(timestamp >> 16);
-            bytes[2] = (byte)(timestamp >> 8);
-            bytes[3] = (byte)(timestamp);
-            bytes[4] = (byte)(machine >> 16);
-            bytes[5] = (byte)(machine >> 8);
-            bytes[6] = (byte)(machine);
-            bytes[7] = (byte)(pid >> 8);
-            bytes[8] = (byte)(pid);
-            bytes[9] = (byte)(increment >> 16);
-            bytes[10] = (byte)(increment >> 8);
-            bytes[11] = (byte)(increment);
+            var bytes = new byte[12];
+            bytes[0] = (byte) (timestamp >> 24);
+            bytes[1] = (byte) (timestamp >> 16);
+            bytes[2] = (byte) (timestamp >> 8);
+            bytes[3] = (byte) timestamp;
+            bytes[4] = (byte) (machine >> 16);
+            bytes[5] = (byte) (machine >> 8);
+            bytes[6] = (byte) machine;
+            bytes[7] = (byte) (pid >> 8);
+            bytes[8] = (byte) pid;
+            bytes[9] = (byte) (increment >> 16);
+            bytes[10] = (byte) (increment >> 8);
+            bytes[11] = (byte) increment;
             return bytes;
         }
 
-        private static void Unpack(byte[] bytes, out int timestamp, out int machine, out short pid, out int increment)
+        /// <summary>
+        ///     Parses a string and creates a new ObjectId.
+        /// </summary>
+        /// <param name="s">The string value.</param>
+        /// <returns>A ObjectId.</returns>
+        public static ObjectId Parse(string s)
         {
-            if(bytes == null) {
-                throw new ArgumentNullException("bytes");
+            if (s == null) throw new ArgumentNullException("s");
+
+            ObjectId objectId;
+            if (TryParse(s, out objectId)) return objectId;
+            var message = string.Format("'{0}' is not a valid 24 digit hex string.", s);
+            throw new FormatException(message);
+        }
+
+        /// <summary>
+        ///     Tries to parse a string and create a new ObjectId.
+        /// </summary>
+        /// <param name="s">The string value.</param>
+        /// <param name="objectId">The new ObjectId.</param>
+        /// <returns>True if the string was parsed successfully.</returns>
+        public static bool TryParse(string s, out ObjectId objectId)
+        {
+            // don't throw ArgumentNullException if s is null
+            if (s != null && s.Length == 24)
+            {
+                byte[] bytes;
+                if (TryParseHexString(s, out bytes))
+                {
+                    objectId = new ObjectId(bytes);
+                    return true;
+                }
             }
-            if(bytes.Length != 12) {
-                throw new ArgumentOutOfRangeException("bytes", "Byte array must be 12 bytes long.");
-            }
+
+            objectId = default(ObjectId);
+            return false;
+        }
+
+        /// <summary>
+        ///     Unpacks a byte array into the components of an ObjectId.
+        /// </summary>
+        /// <param name="bytes">A byte array.</param>
+        /// <param name="timestamp">The timestamp.</param>
+        /// <param name="machine">The machine hash.</param>
+        /// <param name="pid">The PID.</param>
+        /// <param name="increment">The increment.</param>
+        public static void Unpack(byte[] bytes, out int timestamp, out int machine, out short pid, out int increment)
+        {
+            if (bytes == null) throw new ArgumentNullException("bytes");
+            if (bytes.Length != 12) throw new ArgumentOutOfRangeException("bytes", "Byte array must be 12 bytes long.");
+
             timestamp = (bytes[0] << 24) + (bytes[1] << 16) + (bytes[2] << 8) + bytes[3];
             machine = (bytes[4] << 16) + (bytes[5] << 8) + bytes[6];
-            pid = (short)((bytes[7] << 8) + bytes[8]);
+            pid = (short) ((bytes[7] << 8) + bytes[8]);
             increment = (bytes[9] << 16) + (bytes[10] << 8) + bytes[11];
         }
 
         // private static methods
+        private static int GetAppDomainId()
+        {
+#if NETSTANDARD1_5 || NETSTANDARD1_6
+            return 1;
+#else
+            return AppDomain.CurrentDomain.Id;
+#endif
+        }
+
         /// <summary>
-        /// Gets the current process id.  This method exists because of how CAS operates on the call stack, checking
-        /// for permissions before executing the method.  Hence, if we inlined this call, the calling method would not execute
-        /// before throwing an exception requiring the try/catch at an even higher level that we don't necessarily control.
+        ///     Gets the current process id.  This method exists because of how CAS operates on the call stack, checking
+        ///     for permissions before executing the method.  Hence, if we inlined this call, the calling method would not execute
+        ///     before throwing an exception requiring the try/catch at an even higher level that we don't necessarily control.
         /// </summary>
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static int GetCurrentProcessId()
@@ -317,166 +341,244 @@ namespace Umizoo.Infrastructure
 
         private static int GetMachineHash()
         {
-            var hostName = Environment.MachineName; // use instead of Dns.HostName so it will work offline
-            var md5 = MD5.Create();
-            var hash = md5.ComputeHash(Encoding.UTF8.GetBytes(hostName));
-            return (hash[0] << 16) + (hash[1] << 8) + hash[2]; // use first 3 bytes of hash
+            // use instead of Dns.HostName so it will work offline
+            var machineName = GetMachineName();
+            return 0x00ffffff & machineName.GetHashCode(); // use first 3 bytes of hash
+        }
+
+        private static string GetMachineName()
+        {
+            return Environment.MachineName;
+        }
+
+        private static short GetPid()
+        {
+            try
+            {
+                return (short) GetCurrentProcessId(); // use low order two bytes only
+            }
+            catch (SecurityException)
+            {
+                return 0;
+            }
         }
 
         private static int GetTimestampFromDateTime(DateTime timestamp)
         {
-            return (int)Math.Floor((ToUniversalTime(timestamp) - __unixEpoch).TotalSeconds);
+            var secondsSinceEpoch = (long) Math.Floor((ToUniversalTime(timestamp) - __unixEpoch).TotalSeconds);
+            if (secondsSinceEpoch < int.MinValue || secondsSinceEpoch > int.MaxValue)
+                throw new ArgumentOutOfRangeException("timestamp");
+            return (int) secondsSinceEpoch;
+        }
+
+        private static void FromByteArray(byte[] bytes, int offset, out int a, out int b, out int c)
+        {
+            a = (bytes[offset] << 24) | (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3];
+            b = (bytes[offset + 4] << 24) | (bytes[offset + 5] << 16) | (bytes[offset + 6] << 8) | bytes[offset + 7];
+            c = (bytes[offset + 8] << 24) | (bytes[offset + 9] << 16) | (bytes[offset + 10] << 8) | bytes[offset + 11];
         }
 
         // public methods
         /// <summary>
-        /// Compares this ObjectId to another ObjectId.
+        ///     Compares this ObjectId to another ObjectId.
         /// </summary>
         /// <param name="other">The other ObjectId.</param>
-        /// <returns>A 32-bit signed integer that indicates whether this ObjectId is less than, equal to, or greather than the other.</returns>
+        /// <returns>
+        ///     A 32-bit signed integer that indicates whether this ObjectId is less than, equal to, or greather than the
+        ///     other.
+        /// </returns>
         public int CompareTo(ObjectId other)
         {
-            int r = _timestamp.CompareTo(other._timestamp);
-            if(r != 0) { return r; }
-            r = _machine.CompareTo(other._machine);
-            if(r != 0) { return r; }
-            r = _pid.CompareTo(other._pid);
-            if(r != 0) { return r; }
-            return _increment.CompareTo(other._increment);
+            var result = ((uint) _a).CompareTo((uint) other._a);
+            if (result != 0) return result;
+            result = ((uint) _b).CompareTo((uint) other._b);
+            if (result != 0) return result;
+            return ((uint) _c).CompareTo((uint) other._c);
         }
 
         /// <summary>
-        /// Compares this ObjectId to another ObjectId.
+        ///     Compares this ObjectId to another ObjectId.
         /// </summary>
         /// <param name="rhs">The other ObjectId.</param>
         /// <returns>True if the two ObjectIds are equal.</returns>
         public bool Equals(ObjectId rhs)
         {
             return
-                _timestamp == rhs._timestamp &&
-                _machine == rhs._machine &&
-                _pid == rhs._pid &&
-                _increment == rhs._increment;
+                _a == rhs._a &&
+                _b == rhs._b &&
+                _c == rhs._c;
         }
 
         /// <summary>
-        /// Compares this ObjectId to another object.
+        ///     Compares this ObjectId to another object.
         /// </summary>
         /// <param name="obj">The other object.</param>
         /// <returns>True if the other object is an ObjectId and equal to this one.</returns>
         public override bool Equals(object obj)
         {
-            if(obj is ObjectId) {
-                return Equals((ObjectId)obj);
-            }
-            else {
-                return false;
-            }
+            if (obj is ObjectId) return Equals((ObjectId) obj);
+            return false;
         }
 
         /// <summary>
-        /// Gets the hash code.
+        ///     Gets the hash code.
         /// </summary>
         /// <returns>The hash code.</returns>
         public override int GetHashCode()
         {
-            int hash = 17;
-            hash = 37 * hash + _timestamp.GetHashCode();
-            hash = 37 * hash + _machine.GetHashCode();
-            hash = 37 * hash + _pid.GetHashCode();
-            hash = 37 * hash + _increment.GetHashCode();
+            var hash = 17;
+            hash = 37 * hash + _a.GetHashCode();
+            hash = 37 * hash + _b.GetHashCode();
+            hash = 37 * hash + _c.GetHashCode();
             return hash;
         }
 
         /// <summary>
-        /// Converts the ObjectId to a byte array.
+        ///     Converts the ObjectId to a byte array.
         /// </summary>
         /// <returns>A byte array.</returns>
         public byte[] ToByteArray()
         {
-            return Pack(_timestamp, _machine, _pid, _increment);
+            var bytes = new byte[12];
+            ToByteArray(bytes, 0);
+            return bytes;
         }
 
         /// <summary>
-        /// Returns a string representation of the value.
+        ///     Converts the ObjectId to a byte array.
+        /// </summary>
+        /// <param name="destination">The destination.</param>
+        /// <param name="offset">The offset.</param>
+        public void ToByteArray(byte[] destination, int offset)
+        {
+            if (destination == null) throw new ArgumentNullException("destination");
+            if (offset + 12 > destination.Length)
+                throw new ArgumentException("Not enough room in destination buffer.", "offset");
+
+            destination[offset + 0] = (byte) (_a >> 24);
+            destination[offset + 1] = (byte) (_a >> 16);
+            destination[offset + 2] = (byte) (_a >> 8);
+            destination[offset + 3] = (byte) _a;
+            destination[offset + 4] = (byte) (_b >> 24);
+            destination[offset + 5] = (byte) (_b >> 16);
+            destination[offset + 6] = (byte) (_b >> 8);
+            destination[offset + 7] = (byte) _b;
+            destination[offset + 8] = (byte) (_c >> 24);
+            destination[offset + 9] = (byte) (_c >> 16);
+            destination[offset + 10] = (byte) (_c >> 8);
+            destination[offset + 11] = (byte) _c;
+        }
+
+        /// <summary>
+        ///     Returns a string representation of the value.
         /// </summary>
         /// <returns>A string representation of the value.</returns>
         public override string ToString()
         {
-            return ToHexString(ToByteArray());
-        }
-
-        /// <summary>
-        /// Parses a string and creates a new ObjectId.
-        /// </summary>
-        /// <param name="s">The string value.</param>
-        /// <returns>A ObjectId.</returns>
-        public static ObjectId Parse(string s)
-        {
-            if(s == null) {
-                throw new ArgumentNullException("s");
-            }
-            if(s.Length != 24) {
-                throw new ArgumentOutOfRangeException("s", "ObjectId string value must be 24 characters.");
-            }
-            return new ObjectId(ParseHexString(s));
-        }
-
-        private static byte[] ParseHexString(string s)
-        {
-            if(s == null) {
-                throw new ArgumentNullException("s");
-            }
-
-            if(s.Length % 2 == 1) {
-                throw new ArgumentException("The binary key cannot have an odd number of digits");
-            }
-
-            byte[] arr = new byte[s.Length >> 1];
-
-            for(int i = 0; i < (s.Length >> 1); ++i) {
-                arr[i] = (byte)((GetHexVal(s[i << 1]) << 4) + (GetHexVal(s[(i << 1) + 1])));
-            }
-
-            return arr;
-        }
-
-        private static string ToHexString(byte[] bytes)
-        {
-            if(bytes == null) {
-                throw new ArgumentNullException("bytes");
-            }
-            var result = new char[bytes.Length * 2];
-            for(int i = 0; i < bytes.Length; i++) {
-                var val = _lookup32[bytes[i]];
-                result[2 * i] = (char)val;
-                result[2 * i + 1] = (char)(val >> 16);
-            }
-            return new string(result);
+            var c = new char[24];
+            c[0] = ToHexChar((_a >> 28) & 0x0f);
+            c[1] = ToHexChar((_a >> 24) & 0x0f);
+            c[2] = ToHexChar((_a >> 20) & 0x0f);
+            c[3] = ToHexChar((_a >> 16) & 0x0f);
+            c[4] = ToHexChar((_a >> 12) & 0x0f);
+            c[5] = ToHexChar((_a >> 8) & 0x0f);
+            c[6] = ToHexChar((_a >> 4) & 0x0f);
+            c[7] = ToHexChar(_a & 0x0f);
+            c[8] = ToHexChar((_b >> 28) & 0x0f);
+            c[9] = ToHexChar((_b >> 24) & 0x0f);
+            c[10] = ToHexChar((_b >> 20) & 0x0f);
+            c[11] = ToHexChar((_b >> 16) & 0x0f);
+            c[12] = ToHexChar((_b >> 12) & 0x0f);
+            c[13] = ToHexChar((_b >> 8) & 0x0f);
+            c[14] = ToHexChar((_b >> 4) & 0x0f);
+            c[15] = ToHexChar(_b & 0x0f);
+            c[16] = ToHexChar((_c >> 28) & 0x0f);
+            c[17] = ToHexChar((_c >> 24) & 0x0f);
+            c[18] = ToHexChar((_c >> 20) & 0x0f);
+            c[19] = ToHexChar((_c >> 16) & 0x0f);
+            c[20] = ToHexChar((_c >> 12) & 0x0f);
+            c[21] = ToHexChar((_c >> 8) & 0x0f);
+            c[22] = ToHexChar((_c >> 4) & 0x0f);
+            c[23] = ToHexChar(_c & 0x0f);
+            return new string(c);
         }
 
         private static DateTime ToUniversalTime(DateTime dateTime)
         {
-            if(dateTime == DateTime.MinValue) {
-                return DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc);
-            }
-            else if(dateTime == DateTime.MaxValue) {
-                return DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc);
-            }
-            else {
-                return dateTime.ToUniversalTime();
-            }
+            if (dateTime == DateTime.MinValue) return DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc);
+            if (dateTime == DateTime.MaxValue) return DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc);
+            return dateTime.ToUniversalTime();
         }
 
-        private static int GetHexVal(char hex)
+        private static char ToHexChar(int value)
         {
-            int val = (int)hex;
-            //For uppercase A-F letters:
-            //return val - (val < 58 ? 48 : 55);
-            //For lowercase a-f letters:
-            //return val - (val < 58 ? 48 : 87);
-            //Or the two combined, but a bit slower:
-            return val - (val < 58 ? 48 : (val < 97 ? 55 : 87));
+            return (char) (value + (value < 10 ? '0' : 'a' - 10));
+        }
+
+        private static byte[] ParseHexString(string s)
+        {
+            if (s == null) throw new ArgumentNullException(nameof(s));
+
+            byte[] bytes;
+            if (!TryParseHexString(s, out bytes))
+                throw new FormatException("String should contain only hexadecimal digits.");
+
+            return bytes;
+        }
+
+        private static bool TryParseHexString(string s, out byte[] bytes)
+        {
+            bytes = null;
+
+            if (s == null) return false;
+
+            var buffer = new byte[(s.Length + 1) / 2];
+
+            var i = 0;
+            var j = 0;
+
+            if (s.Length % 2 == 1)
+            {
+                // if s has an odd length assume an implied leading "0"
+                int y;
+                if (!TryParseHexChar(s[i++], out y)) return false;
+                buffer[j++] = (byte) y;
+            }
+
+            while (i < s.Length)
+            {
+                int x, y;
+                if (!TryParseHexChar(s[i++], out x)) return false;
+                if (!TryParseHexChar(s[i++], out y)) return false;
+                buffer[j++] = (byte) ((x << 4) | y);
+            }
+
+            bytes = buffer;
+            return true;
+        }
+
+        private static bool TryParseHexChar(char c, out int value)
+        {
+            if (c >= '0' && c <= '9')
+            {
+                value = c - '0';
+                return true;
+            }
+
+            if (c >= 'a' && c <= 'f')
+            {
+                value = 10 + (c - 'a');
+                return true;
+            }
+
+            if (c >= 'A' && c <= 'F')
+            {
+                value = 10 + (c - 'A');
+                return true;
+            }
+
+            value = 0;
+            return false;
         }
     }
 }

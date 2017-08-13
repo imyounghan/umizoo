@@ -10,7 +10,7 @@ namespace UserRegistration.Application
     {
         static void Main(string[] args)
         {
-            Configuration.Current
+            Configuration.Create()
                 .UseKafka(ProcessingFlags.Command | ProcessingFlags.Query)
                 .EnableService(ConnectionMode.Wcf)
                 .Done();

@@ -1,4 +1,9 @@
-﻿using System;
+﻿// Copyright © 2015 ~ 2017 Sunsoft Studio, All rights reserved.
+// Umizoo is a framework can help you develop DDD and CQRS style applications.
+// 
+// Created by young.han with Visual Studio 2017 on 2017-08-11.
+
+using System;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -43,7 +48,7 @@ namespace Umizoo.Infrastructure.Utilities
             try {
                 socket.Shutdown(SocketShutdown.Both);
             }
-            catch (Exception) {                
+            catch (Exception) {
             }
             finally {
                 CloseSocket(socket);
@@ -52,13 +57,12 @@ namespace Umizoo.Infrastructure.Utilities
         public static void CloseSocket(Socket socket)
         {
             if (socket == null) return;
-            
+
             try {
                 socket.Close(10000);
             }
             catch (Exception) {
             }
-        }        
-
+        }
     }
 }

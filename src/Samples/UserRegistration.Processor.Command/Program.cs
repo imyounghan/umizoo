@@ -9,9 +9,10 @@ namespace UserRegistration.Processor
     {
         static void Main(string[] args)
         {
-            Configuration.Current
+            Configuration.Create()
                 .UseKafka(ProcessingFlags.Event | ProcessingFlags.Command, "Commands")
-                .EnableProcessors(ProcessingFlags.Command, ConnectionMode.Wcf)
+                .EnableProcessors(ProcessingFlags.Command)
+                .EnableService(ConnectionMode.Wcf)
                 .Done();
 
             Console.WriteLine("type 'ESC' key to exit command consumer...");

@@ -1,61 +1,69 @@
-﻿using System;
+﻿// Copyright © 2015 ~ 2017 Sunsoft Studio, All rights reserved.
+// Umizoo is a framework can help you develop DDD and CQRS style applications.
+// 
+// Created by young.han with Visual Studio 2017 on 2017-08-07.
+
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 
 namespace Umizoo.Infrastructure.Composition.Interception
 {
-    /// <summary>
-    /// <see cref="IMethodInvocation"/> 的实现类
-    /// </summary>
     public class MethodInvocation : IMethodInvocation
     {
         /// <summary>
-        /// Parameterized constructor.
+        ///     Parameterized constructor.
         /// </summary>
         public MethodInvocation(object target, MethodBase methodBase, params object[] parameterValues)
         {
-            Ensure.NotNull(target, "target");
-            Ensure.NotNull(methodBase, "methodBase");
+            Assertions.NotNull(target, "target");
+            Assertions.NotNull(methodBase, "methodBase");
 
-            this.Target = target;
-            this.MethodBase = methodBase;
-            this.InvocationContext = new Dictionary<string, object>();
+            Target = target;
+            MethodBase = methodBase;
+            InvocationContext = new Dictionary<string, object>();
 
-            ParameterInfo[] targetParameters = methodBase.GetParameters();
-            this.Arguments = new ParameterCollection(parameterValues, targetParameters, param => true);
-            this.Inputs = new ParameterCollection(parameterValues, targetParameters, param => !param.IsOut);
+            var targetParameters = methodBase.GetParameters();
+            Arguments = new ParameterCollection(parameterValues, targetParameters, param => true);
+            Inputs = new ParameterCollection(parameterValues, targetParameters, param => !param.IsOut);
         }
 
         /// <summary>
-        /// 方法上所有的参数列表
+        ///     方法上所有的参数列表
         /// </summary>
-        public IParameterCollection Arguments { get; private set; }
-        /// <summary>
-        /// 方法上输入参数的列表
-        /// </summary>
-        public IParameterCollection Inputs { get; private set; }
-        /// <summary>
-        /// 当前上下文数据
-        /// </summary>
-        public IDictionary<string, object> InvocationContext { get; private set; }
-        /// <summary>
-        /// 调用方法的信息
-        /// </summary>
-        public MethodBase MethodBase { get; private set; }
-        /// <summary>
-        /// 调用方法所在的实例
-        /// </summary>
-        public object Target { get; private set; }
+        public IParameterCollection Arguments { get; }
 
         /// <summary>
-        /// 创建一个带有异常信息的结果
-        /// </summary>ram>
+        ///     方法上输入参数的列表
+        /// </summary>
+        public IParameterCollection Inputs { get; }
+
+        /// <summary>
+        ///     当前上下文数据
+        /// </summary>
+        public IDictionary<string, object> InvocationContext { get; }
+
+        /// <summary>
+        ///     调用方法的信息
+        /// </summary>
+        public MethodBase MethodBase { get; }
+
+        /// <summary>
+        ///     调用方法所在的实例
+        /// </summary>
+        public object Target { get; }
+
+        /// <summary>
+        ///     创建一个带有异常信息的结果
+        /// </summary>
+        /// ram>
         public IMethodReturn CreateExceptionMethodReturn(Exception ex)
         {
             return new MethodReturn(this, ex);
         }
+
         /// <summary>
-        /// 创建一个正确返回的结果
+        ///     创建一个正确返回的结果
         /// </summary>
         public IMethodReturn CreateMethodReturn(object returnValue, params object[] outputs)
         {

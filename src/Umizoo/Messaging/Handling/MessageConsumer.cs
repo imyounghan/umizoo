@@ -1,144 +1,98 @@
-﻿// --------------------------------------------------------------------------------------------------------------------
+﻿// Copyright © 2015 ~ 2017 Sunsoft Studio, All rights reserved.
+// Umizoo is a framework can help you develop DDD and CQRS style applications.
+// 
+// Created by young.han with Visual Studio 2017 on 2017-08-09.
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using Umizoo.Infrastructure.Composition;
+using Umizoo.Infrastructure.Logging;
+using Umizoo.Configurations;
 
 namespace Umizoo.Messaging.Handling
 {
-    using System;
-    using System.Collections.Generic;
-    using System.Linq;
-    using System.Reflection;
-    using System.Threading;
-
-    using Umizoo.Configurations;
-    using Umizoo.Infrastructure;
-    using Umizoo.Infrastructure.Composition;
-
     /// <summary>
-    /// 表示 <typeparamref name="TMessage"/> 的消费程序
+    ///     表示 <typeparamref name="TMessage" /> 的消费程序
     /// </summary>
     /// <typeparam name="TMessage">消息类型</typeparam>
-    public abstract class MessageConsumer<TMessage> : Processor, IInitializer
+    public abstract class MessageConsumer<TMessage> : Consumer<TMessage> where TMessage : IMessage
     {
-        #region Fields
-
         private readonly Dictionary<Type, ICollection<IHandler>> _envelopeHandlers;
         private readonly Dictionary<Type, ICollection<IHandler>> _handlers;
-        private readonly IMessageReceiver<Envelope<TMessage>> receiver;
-        /// <summary>
-        /// 消息者名称
-        /// </summary>
-        private readonly string messageTypeName;
-
-        #endregion
-
-        #region Constructors and Destructors
+        private readonly CheckHandlerMode _checkHandlerMode;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="MessageConsumer{TMessage}"/> class.
+        ///     Initializes a new instance of the <see cref="MessageConsumer{TMessage}" /> class.
         /// </summary>
-        public MessageConsumer(IMessageReceiver<Envelope<TMessage>> receiver)
-            : this(receiver, null)
-        { }
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="MessageConsumer{TMessage}"/> class.
-        /// </summary>
-        protected MessageConsumer(IMessageReceiver<Envelope<TMessage>> receiver, string messageTypeName)
+        protected MessageConsumer(IMessageReceiver<Envelope<TMessage>> receiver, ProcessingFlags processingFlag)
+            : this(receiver, CheckHandlerMode.Ignored, processingFlag)
         {
-            this._handlers = new Dictionary<Type, ICollection<IHandler>>();
-            this._envelopeHandlers = new Dictionary<Type, ICollection<IHandler>>();
-
-            this.messageTypeName = messageTypeName.IfEmpty(() => typeof(TMessage).Name.Substring(1));
-            this.receiver = receiver;
-            this.CheckMode = CheckHandlerMode.Ignored;
         }
 
-        #endregion
-
-        #region Enums
-
         /// <summary>
-        /// 检查处理器的方式
+        ///     Initializes a new instance of the <see cref="MessageConsumer{TMessage}" /> class.
         /// </summary>
-        protected enum CheckHandlerMode
+        protected MessageConsumer(IMessageReceiver<Envelope<TMessage>> receiver, CheckHandlerMode checkHandlerMode,
+            ProcessingFlags processingFlag)
+            : base(receiver, processingFlag)
         {
-            /// <summary>
-            /// The only one.
-            /// </summary>
-            OnlyOne,
-
-            /// <summary>
-            /// The ignored.
-            /// </summary>
-            Ignored,
+            _handlers = new Dictionary<Type, ICollection<IHandler>>();
+            _envelopeHandlers = new Dictionary<Type, ICollection<IHandler>>();
+            _checkHandlerMode = checkHandlerMode;
         }
 
-        #endregion
-
-        #region Properties
-
-        /// <summary>
-        /// 设置或获取检查处理器的方式
-        /// </summary>
-        protected CheckHandlerMode CheckMode { get; set; }
-
-        #endregion
-
-        #region Methods and Operators
-
-        /// <summary>
-        /// 初始化消费者程序
-        /// </summary>
-        public abstract void Initialize(IObjectContainer container, IEnumerable<Assembly> assemblies);
 
         protected override void Dispose(bool disposing)
-        { }
+        {
+        }
 
         /// <summary>
-        /// 获取类型的处理器集合
+        ///     获取类型的处理器集合
         /// </summary>
         protected IEnumerable<IHandler> GetHandlers(Type messageType)
         {
             var combinedHandlers = new List<IHandler>();
-            if (this._handlers.ContainsKey(messageType)) {
-                combinedHandlers.AddRange(this._handlers[messageType]);
-            }
+            if (_handlers.ContainsKey(messageType)) combinedHandlers.AddRange(_handlers[messageType]);
 
-            if (this._envelopeHandlers.ContainsKey(messageType)) {
-                combinedHandlers.AddRange(this._envelopeHandlers[messageType]);
-            }
+            if (_envelopeHandlers.ContainsKey(messageType)) combinedHandlers.AddRange(_envelopeHandlers[messageType]);
 
             return combinedHandlers;
         }
 
         /// <summary>
-        /// 初始化该类型
+        ///     初始化该类型
         /// </summary>
         protected void Initialize(IObjectContainer container, Type messageType)
         {
-            List<IHandler> envelopedEventHandlers =
+            var envelopedEventHandlers =
                 container.ResolveAll(typeof(IEnvelopedMessageHandler<>).MakeGenericType(messageType))
                     .OfType<IEnvelopedHandler>()
                     .Cast<IHandler>()
                     .ToList();
-            if (envelopedEventHandlers.Count > 0) {
-                this._envelopeHandlers[messageType] = envelopedEventHandlers;
+            if (envelopedEventHandlers.Count > 0)
+            {
+                _envelopeHandlers[messageType] = envelopedEventHandlers;
 
-                if (this.CheckMode == CheckHandlerMode.OnlyOne) {
-                    if (envelopedEventHandlers.Count > 1) {
+                if (_checkHandlerMode == CheckHandlerMode.OnlyOne)
+                {
+                    if (envelopedEventHandlers.Count > 1)
                         throw new SystemException(
                             string.Format(
                                 "Found more than one handler for this type('{0}') with IEnvelopedMessageHandler<>.",
                                 messageType.FullName));
-                    }
 
                     return;
                 }
             }
 
-            List<IHandler> handlers =
-                container.ResolveAll(typeof(IMessageHandler<>).MakeGenericType(messageType)).OfType<IHandler>().ToList();
-            if (this.CheckMode == CheckHandlerMode.OnlyOne) {
-                switch (handlers.Count) {
+            var handlers =
+                container.ResolveAll(typeof(IMessageHandler<>).MakeGenericType(messageType)).OfType<IHandler>()
+                    .ToList();
+            if (_checkHandlerMode == CheckHandlerMode.OnlyOne)
+                switch (handlers.Count)
+                {
                     case 0:
                         throw new SystemException(
                             string.Format("The handler of this type('{0}') is not found.", messageType.FullName));
@@ -150,77 +104,36 @@ namespace Umizoo.Messaging.Handling
                                 "Found more than one handler for '{0}' with IMessageHandler<>.",
                                 messageType.FullName));
                 }
-            }
 
-            if (handlers.Count > 0) {
-                this._handlers[messageType] = handlers;
-            }
+            if (handlers.Count > 0) _handlers[messageType] = handlers;
+        }
+
+        protected Envelope Convert(Envelope<TMessage> envelope)
+        {
+            var resultType = envelope.Body.GetType();
+
+            return (Envelope)Activator.CreateInstance(typeof(Envelope<>).MakeGenericType(resultType), envelope.Body, envelope.MessageId);
         }
 
         /// <summary>
-        /// 当收到消息后的处理方法
+        ///     处理消息.
         /// </summary>
-        /// <param name="sender">发送程序</param>
-        /// <param name="envelope">一个消息</param>
-        private void OnMessageReceived(object sender, Envelope<TMessage> envelope)
+        protected override void OnMessageReceived(Envelope<TMessage> envelope)
         {
-            try {
-                this.ProcessMessage(envelope, envelope.Body.GetType());
-            }
-            catch (Exception ex) {
-                LogManager.Default.Error(
-                        ex,
-                        "An exception happened while handling '{0}' through handler, Error will be ignored and message receiving will continue.",
-                        envelope.Body);
-            }
-        }
+            var messageType = envelope.Body.GetType();
 
+            var combinedHandlers = GetHandlers(messageType);
 
-        /// <summary>
-        /// 处理消息.
-        /// </summary>
-        protected virtual void ProcessMessage(Envelope<TMessage> envelope, Type messageType)
-        {
-            IEnumerable<IHandler> combinedHandlers = this.GetHandlers(messageType);
-
-            if (combinedHandlers.IsEmpty()) {
-                if (LogManager.Default.IsWarnEnabled) {
-                    LogManager.Default.WarnFormat("There is no handler of type('{0}').", messageType.FullName);
-                }
+            if (combinedHandlers.IsEmpty())
+            {
+                LogManager.Default.WarnFormat("There is no handler of type('{0}').", messageType.FullName);
 
                 return;
             }
 
-            foreach (IHandler handler in combinedHandlers) {
-                if (handler is IEnvelopedHandler) {
-                    this.TryMultipleInvoke(this.InvokeHandler, handler, envelope);
-                }
-                else {
-                    this.TryMultipleInvoke(this.InvokeHandler, handler, envelope.Body);
-                }
-            }
-        }
-
-        /// <summary>
-        ///     启动进程
-        /// </summary>
-        protected override void Start()
-        {
-            this.receiver.MessageReceived += this.OnMessageReceived;
-            this.receiver.Start();
-
-            LogManager.Default.InfoFormat("{0} Consumer Started!", this.messageTypeName);
-        }
-
-        /// <summary>
-        ///     停止进程
-        /// </summary>
-        protected override void Stop()
-        {
-            this.receiver.MessageReceived -= this.OnMessageReceived;
-            this.receiver.Stop();
-
-            LogManager.Default.InfoFormat("{0} Consumer Stopped!", this.messageTypeName);
+            foreach (var handler in combinedHandlers)
+                if (handler is IEnvelopedHandler) TryMultipleInvoke(InvokeHandler, handler, Convert(envelope));
+                else TryMultipleInvoke(InvokeHandler, handler, envelope.Body);
         }
 
         protected void TryMultipleInvoke<THandler, TParameter>(
@@ -228,42 +141,53 @@ namespace Umizoo.Messaging.Handling
             THandler handler,
             TParameter parameter)
         {
-            int retryTimes = ConfigurationSettings.HandleRetrytimes;
-            int retryInterval = ConfigurationSettings.HandleRetryInterval;
+            var retryTimes = ConfigurationSettings.HandleRetrytimes;
+            var retryInterval = ConfigurationSettings.HandleRetryInterval;
 
-            int count = 0;
-            while (count++ < retryTimes) {
-                try {
+            var count = 0;
+            while (count++ < retryTimes)
+                try
+                {
                     retryAction(handler, parameter);
                     break;
                 }
-                catch (UnrecoverableException ex) {
+                catch (ApplicationException ex)
+                {
                     LogManager.Default.Error(
                         ex,
-                        "UnrecoverableException raised when handling '{0}' on '{1}', exit retry and throw.",
+                        "ApplicationException raised when handling '{0}' on '{1}', exit retry and throw.",
                         parameter,
                         handler.GetType().FullName);
                     throw ex;
                 }
-                catch (Exception ex) {
-                    if (count == retryTimes) {
+                catch (SystemException ex)
+                {
+                    LogManager.Default.Error(
+                        ex,
+                        "SystemException raised when handling '{0}' on '{1}', exit retry and throw.",
+                        parameter,
+                        handler.GetType().FullName);
+                    throw ex;
+                }
+                catch (Exception ex)
+                {
+                    if (count == retryTimes)
+                    {
                         LogManager.Default.Error(
-                                ex,
-                                "Exception raised when handling '{0}' on '{1}', the retry count has been reached.",
-                                parameter,
-                                handler.GetType().FullName);
+                            ex,
+                            "Exception raised when handling '{0}' on '{1}', the retry count has been reached.",
+                            parameter,
+                            handler.GetType().FullName);
                         throw ex;
                     }
 
                     Thread.Sleep(retryInterval);
                 }
-            }
 
-            if (LogManager.Default.IsDebugEnabled) {
+            if (LogManager.Default.IsDebugEnabled)
                 LogManager.Default.DebugFormat("Handle '{0}' on '{1}' successfully.",
-                    parameter, 
+                    parameter,
                     handler.GetType().FullName);
-            }
         }
 
         protected void InvokeHandler<THandler, TParameter>(THandler handler, TParameter parameter)
@@ -271,6 +195,20 @@ namespace Umizoo.Messaging.Handling
             ((dynamic)handler).Handle((dynamic)parameter);
         }
 
-        #endregion
+        /// <summary>
+        ///     检查处理器的方式
+        /// </summary>
+        protected enum CheckHandlerMode
+        {
+            /// <summary>
+            ///     The only one.
+            /// </summary>
+            OnlyOne,
+
+            /// <summary>
+            ///     The ignored.
+            /// </summary>
+            Ignored
+        }
     }
 }

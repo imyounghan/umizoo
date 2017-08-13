@@ -1,9 +1,13 @@
-﻿
+﻿// Copyright © 2015 ~ 2017 Sunsoft Studio, All rights reserved.
+// Umizoo is a framework can help you develop DDD and CQRS style applications.
+// 
+// Created by young.han with Visual Studio 2017 on 2017-08-08.
+
+using System;
+using Umizoo.Messaging;
 
 namespace Umizoo.Seeds
 {
-    using System;
-
     /// <summary>
     /// 表示继承该接口的是一个聚合根仓储。
     /// </summary>
@@ -18,6 +22,11 @@ namespace Umizoo.Seeds
         /// 保存聚合根。
         /// </summary>
         void Save(IAggregateRoot aggregateRoot);
+
+        /// <summary>
+        /// 保存聚合根。
+        /// </summary>
+        void Save(IEventSourced eventSourced, Envelope<ICommand> command);
 
         /// <summary>
         /// 删除聚合根。

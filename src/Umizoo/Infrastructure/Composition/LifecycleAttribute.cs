@@ -1,8 +1,12 @@
-﻿
+﻿// Copyright © 2015 ~ 2017 Sunsoft Studio, All rights reserved.
+// Umizoo is a framework can help you develop DDD and CQRS style applications.
+// 
+// Created by young.han with Visual Studio 2017 on 2017-08-06.
+
+using System;
+
 namespace Umizoo.Infrastructure.Composition
 {
-    using System;
-
     /// <summary>
     /// 表示实例的生命周期的特性(默认为Singleton)
     /// </summary>
@@ -21,25 +25,12 @@ namespace Umizoo.Infrastructure.Composition
         /// </summary>
         public LifecycleAttribute(Lifecycle lifecycle)
         {
-            this.Lifecycle = lifecycle;
+            Lifecycle = lifecycle;
         }
 
         /// <summary>
         /// 返回生命周期类型(默认为Singleton)
         /// </summary>
-        public Lifecycle Lifecycle { get; private set; }
-
-        /// <summary>
-        /// 获取生命周期
-        /// </summary>
-        public static Lifecycle GetLifecycle(Type type)
-        {
-            var attribute = type.GetSingleAttribute<LifecycleAttribute>(false);
-
-            if(attribute == null)
-                return Lifecycle.Singleton;
-
-            return attribute.Lifecycle;
-        }
+        public Lifecycle Lifecycle { get; }
     }
 }

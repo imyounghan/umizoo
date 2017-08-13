@@ -1,13 +1,12 @@
 ﻿using System;
 using System.Runtime.Serialization;
-using Umizoo.Infrastructure;
 using Umizoo.Messaging;
 
 namespace UserRegistration.Events
 {
     [DataContract]
     [Serializable]
-    public class UserSigned : MessageBase, IEvent
+    public class UserSigned : IEvent
     {
         public UserSigned()
         { }

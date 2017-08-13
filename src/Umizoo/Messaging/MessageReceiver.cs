@@ -1,21 +1,40 @@
-﻿
+﻿// Copyright © 2015 ~ 2017 Sunsoft Studio, All rights reserved.
+// Umizoo is a framework can help you develop DDD and CQRS style applications.
+// 
+// Created by young.han with Visual Studio 2017 on 2017-08-08.
+
+
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Umizoo.Infrastructure.Logging;
+
 namespace Umizoo.Messaging
 {
-    using System;
-    using System.Threading;
-    using System.Threading.Tasks;
-
     public abstract class MessageReceiver<TMessage> : IMessageReceiver<Envelope<TMessage>>
         where TMessage : IMessage
     {
         /// <summary>
-        /// 通知源
+        ///     通知源
         /// </summary>
-        private CancellationTokenSource cancellationSource;
+        private CancellationTokenSource _cancellationSource;
 
-        #region IMessageReceiver<Envelope<TMessage>> 成员
+        
 
-        public event EventHandler<Envelope<TMessage>> MessageReceived = (sender, args) => { };
+
+        private event EventHandler<Envelope<TMessage>> messageReceived = (sender, args) => { };
+
+        protected virtual void OnMessageReceived(object sender, Envelope<TMessage> e)
+        {
+            try
+            {
+                messageReceived.Invoke(sender, e);
+            }
+            catch (Exception ex)
+            {
+                LogManager.Default.Error(ex, "Take an envelope '{0}' from local queue.", e);
+            }
+        }
 
         protected virtual void Start()
         {
@@ -25,54 +44,41 @@ namespace Umizoo.Messaging
         {
         }
 
-        /// <summary>
-        /// 当收到消息后的处理方法
-        /// </summary>
-        protected virtual void OnMessageReceived(object sender, Envelope<TMessage> message)
+        event EventHandler<Envelope<TMessage>> IMessageReceiver<Envelope<TMessage>>.MessageReceived
         {
-            this.MessageReceived(sender, message);
+            add { messageReceived += value; }
+            remove { messageReceived -= value; }
         }
-
-        private void ReceiveMessages()
-        {
-            this.ReceiveMessages(this.cancellationSource.Token);
-        }
-
-        /// <summary>
-        /// 取出消息的方法
-        /// </summary>
-        /// <param name="cancellationToken">通知取消的令牌</param>
-        protected abstract void ReceiveMessages(CancellationToken cancellationToken);
-
-        #endregion
-
-        #region IMessageReceiver<Envelope<TMessage>> 成员
 
         void IMessageReceiver<Envelope<TMessage>>.Start()
         {
-            if(this.cancellationSource == null) {
-                this.Start();
-
-                this.cancellationSource = new CancellationTokenSource();
-                Task.Factory.StartNew(this.ReceiveMessages,
-                        this.cancellationSource.Token,
-                        TaskCreationOptions.LongRunning | TaskCreationOptions.PreferFairness,
-                        TaskScheduler.Current);
+            if (_cancellationSource == null)
+            {
+                _cancellationSource = new CancellationTokenSource();
+                Task.Factory.StartNew(ContinuousWorking,
+                    _cancellationSource.Token,
+                    TaskCreationOptions.LongRunning | TaskCreationOptions.PreferFairness,
+                    TaskScheduler.Current);
             }
         }
 
         void IMessageReceiver<Envelope<TMessage>>.Stop()
         {
-            if(this.cancellationSource != null) {
-                this.Stop();
-
-                using(this.cancellationSource) {
-                    this.cancellationSource.Cancel();
-                    this.cancellationSource = null;
+            if (_cancellationSource != null)
+            {
+                using (_cancellationSource)
+                {
+                    _cancellationSource.Cancel();
+                    _cancellationSource = null;
                 }
             }
         }
 
-        #endregion
+        protected abstract void Working(CancellationToken cancellationToken);
+
+        private void ContinuousWorking()
+        {
+            Working(_cancellationSource.Token);
+        }
     }
 }

@@ -1,109 +1,88 @@
-﻿
+﻿// Copyright © 2015 ~ 2017 Sunsoft Studio, All rights reserved.
+// Umizoo is a framework can help you develop DDD and CQRS style applications.
+// 
+// Created by young.han with Visual Studio 2017 on 2017-08-09.
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using Umizoo.Infrastructure.Composition;
+using Umizoo.Infrastructure.Filtering;
+using Umizoo.Infrastructure.Logging;
+using Umizoo.Configurations;
+using Umizoo.Infrastructure;
+using Umizoo.Seeds;
+
 namespace Umizoo.Messaging.Handling
 {
-    using System;
-    using System.Collections.Generic;
-    using System.Linq;
-    using System.Reflection;
-    using System.Threading;
-
-    using Umizoo.Configurations;
-    using Umizoo.Infrastructure;
-    using Umizoo.Infrastructure.Composition;
-    using Umizoo.Seeds;
-
     /// <summary>
-    /// The command consumer.
+    ///     The command consumer.
     /// </summary>
-    public class CommandConsumer : MessageConsumer<ICommand>
+    public class CommandConsumer : MessageConsumer<ICommand>, IInitializer
     {
-        #region Fields
-
         private readonly Dictionary<Type, IHandler> _commandHandlers;
-        private readonly ICache cache;
-        private readonly IMessageBus<IEvent> eventBus;
-        private readonly IEventStore eventStore;
-        private readonly IMessageBus<IPublishableException> exceptionBus;
-        private readonly IRepository repository;
-        private readonly IMessageBus<IResult> resultBus;
-        private readonly ISnapshotStore snapshotStore;
-        private readonly ITextSerializer serializer;
-
-        #endregion
-
-        #region Constructors and Destructors
+        private readonly IMessageBus<IPublishableException> _exceptionBus;
+        private readonly IRepository _repository;
+        private readonly IMessageBus<IResult> _resultBus;
+        private readonly ITextSerializer _serializer;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="CommandConsumer"/> class.
+        ///     Initializes a new instance of the <see cref="CommandConsumer" /> class.
         /// </summary>
         public CommandConsumer(
             IMessageBus<IPublishableException> exceptionBus,
             IMessageBus<IResult> resultBus,
-            IEventStore eventStore,
-            ISnapshotStore snapshotStore,
             IRepository repository,
-            ICache cache,
-            IMessageBus<IEvent> eventBus,
             ITextSerializer serializer,
             IMessageReceiver<Envelope<ICommand>> commandReceiver)
-            : base(commandReceiver)
+            : base(commandReceiver, CheckHandlerMode.OnlyOne, ProcessingFlags.Command)
         {
-            this.exceptionBus = exceptionBus;
-            this.resultBus = resultBus;
+            _exceptionBus = exceptionBus;
+            _resultBus = resultBus;
+            _repository = repository;
+            _serializer = serializer;
 
-            this.eventStore = eventStore;
-            this.snapshotStore = snapshotStore;
-            this.repository = repository;
-            this.cache = cache;
-            this.eventBus = eventBus;
-            this.serializer = serializer;
-
-            this._commandHandlers = new Dictionary<Type, IHandler>();
-
-            this.CheckMode = CheckHandlerMode.OnlyOne;
+            _commandHandlers = new Dictionary<Type, IHandler>();
         }
 
-        #endregion
-
-        #region Methods
-
-        public override void Initialize(IObjectContainer container, IEnumerable<Assembly> assemblies)
+        public void Initialize(IObjectContainer container, IEnumerable<Type> types)
         {
-            foreach (var commandType in Configuration.Current.CommandTypes.Values) {
-                List<ICommandHandler> commandHandlers =
-                container.ResolveAll(typeof(ICommandHandler<>).MakeGenericType(commandType))
-                    .OfType<ICommandHandler>()
-                    .ToList();
-                switch (commandHandlers.Count) {
-                    case 0:
-                        break;
-                    case 1:
-                        this._commandHandlers[commandType] = commandHandlers.First();
-                        continue;
-                    default:
-                        throw new SystemException(string.Format(
+            types.Where(type => type.IsClass && !type.IsAbstract && typeof(ICommand).IsAssignableFrom(type))
+                .ForEach(commandType => {
+                    var commandHandlers =
+                        container.ResolveAll(typeof(ICommandHandler<>).MakeGenericType(commandType))
+                            .OfType<ICommandHandler>()
+                            .ToList();
+                    switch (commandHandlers.Count) {
+                        case 0:
+                            break;
+                        case 1:
+                            _commandHandlers[commandType] = commandHandlers.First();
+                            return;
+                        default:
+                            throw new SystemException(string.Format(
                                 "Found more than one handler for this type('{0}') with ICommandHandler<>.",
                                 commandType.FullName));
-                }
+                    }
 
-                this.Initialize(container, commandType);
-            }
+                    Initialize(container, commandType);
+                });
         }
 
 
-
-        protected override void ProcessMessage(Envelope<ICommand> envelope, Type commandType)
+        protected override void OnMessageReceived(Envelope<ICommand> envelope)
         {
+            var commandType = envelope.Body.GetType();
             var traceInfo = (TraceInfo)envelope.Items[StandardMetadata.TraceInfo];
             IHandler handler;
-            if (!this._commandHandlers.TryGetValue(commandType, out handler)) {
-                var handlers = this.GetHandlers(commandType);
+            if (!_commandHandlers.TryGetValue(commandType, out handler)) {
+                var handlers = GetHandlers(commandType);
                 if (handlers.IsEmpty()) {
-                    var errorMessage = string.Format("The handler of this type('{0}') is not found.", commandType.FullName);
-                    if (LogManager.Default.IsDebugEnabled) {
-                        LogManager.Default.Debug(errorMessage);
-                    }
-                    this.NotifyResult(traceInfo, new CommandResult(HandleStatus.Failed, errorMessage));
+                    var errorMessage = string.Format("The handler of this type('{0}') is not found.",
+                        commandType.FullName);
+                    if (LogManager.Default.IsDebugEnabled) LogManager.Default.Debug(errorMessage);
+                    NotifyResult(traceInfo, new CommandResult(HandleStatus.Failed, errorMessage));
                     return;
                 }
                 handler = handlers.FirstOrDefault();
@@ -111,51 +90,44 @@ namespace Umizoo.Messaging.Handling
 
             if (!ConfigurationSettings.CommandFilterEnabled) {
                 try {
-                    var result = this.ProcessCommand(handler, envelope);
-                    this.NotifyResult(traceInfo, result);
+                    var result = ProcessCommand(handler, envelope);
+                    NotifyResult(traceInfo, result);
                 }
                 catch (Exception ex) {
-                    this.NotifyResult(traceInfo, ex);
+                    NotifyResult(traceInfo, ex);
                 }
 
                 return;
             }
 
 
-
             var handlerContext = new HandlerContext(envelope.Body, handler);
             handlerContext.InvocationContext[StandardMetadata.TraceInfo] = envelope.Items[StandardMetadata.TraceInfo];
             handlerContext.InvocationContext[StandardMetadata.MessageId] = envelope.MessageId;
 
-            IEnumerable<Filter> filters = FilterProviders.Providers.GetFilters(handlerContext);
+            var filters = FilterProviders.Providers.GetFilters(handlerContext);
             var filterInfo = new FilterInfo(filters);
 
             try {
-                ActionExecutedContext postContext = this.InvokeHandlerMethodWithFilters(
+                var postContext = InvokeHandlerMethodWithFilters(
                     handlerContext,
                     filterInfo.ActionFilters,
                     envelope);
-                if (!postContext.ExceptionHandled) {
-                    this.NotifyResult(traceInfo, postContext.ReturnValue ?? postContext.Exception);
-                }
-                else {
-                    this.NotifyResult(traceInfo, postContext.ReturnValue);
-                }
+                if (!postContext.ExceptionHandled)
+                    NotifyResult(traceInfo, postContext.ReturnValue ?? postContext.Exception);
+                else NotifyResult(traceInfo, postContext.ReturnValue);
             }
             catch (ThreadAbortException) {
                 throw;
             }
             catch (Exception ex) {
-                ExceptionContext exceptionContext = InvokeExceptionFilters(
+                var exceptionContext = InvokeExceptionFilters(
                     handlerContext,
                     filterInfo.ExceptionFilters,
                     ex);
-                if (!exceptionContext.ExceptionHandled) {
-                    this.NotifyResult(traceInfo, exceptionContext.ReturnValue ?? exceptionContext.Exception);
-                }
-                else {
-                    this.NotifyResult(traceInfo, exceptionContext.ReturnValue);
-                }
+                if (!exceptionContext.ExceptionHandled)
+                    NotifyResult(traceInfo, exceptionContext.ReturnValue ?? exceptionContext.Exception);
+                else NotifyResult(traceInfo, exceptionContext.ReturnValue);
             }
         }
 
@@ -166,9 +138,7 @@ namespace Umizoo.Messaging.Handling
             Exception exception)
         {
             var context = new ExceptionContext(commandHandlerContext, exception);
-            foreach (IExceptionFilter filter in filters.Reverse()) {
-                filter.OnException(context);
-            }
+            foreach (var filter in filters.Reverse()) filter.OnException(context);
 
             return context;
         }
@@ -180,11 +150,10 @@ namespace Umizoo.Messaging.Handling
         {
             filter.OnActionExecuting(preContext);
 
-            if (!preContext.WillExecute) {
+            if (!preContext.WillExecute)
                 return new ActionExecutedContext(preContext, true, null) { ReturnValue = preContext.ReturnValue };
-            }
 
-            bool wasError = false;
+            var wasError = false;
             ActionExecutedContext postContext = null;
 
             try {
@@ -199,14 +168,10 @@ namespace Umizoo.Messaging.Handling
                 wasError = true;
                 postContext = new ActionExecutedContext(preContext, false, ex);
                 filter.OnActionExecuted(postContext);
-                if (!postContext.ExceptionHandled) {
-                    throw;
-                }
+                if (!postContext.ExceptionHandled) throw;
             }
 
-            if (!wasError) {
-                filter.OnActionExecuted(postContext);
-            }
+            if (!wasError) filter.OnActionExecuted(postContext);
 
             return postContext;
         }
@@ -218,7 +183,7 @@ namespace Umizoo.Messaging.Handling
 
             // 如果自己设置了返回结果直接发送
             if (commandResult != null) {
-                this.resultBus.Send(commandResult, traceInfo);
+                _resultBus.Send(commandResult, traceInfo);
                 return;
             }
 
@@ -226,14 +191,14 @@ namespace Umizoo.Messaging.Handling
 
             // 如果出现了可发布异常则将异常转换成返回结果发送
             if (publishableException != null) {
-                this.exceptionBus.Publish(publishableException);
+                _exceptionBus.Publish(publishableException);
 
                 commandResult = new CommandResult(HandleStatus.Failed,
                     publishableException.Message, publishableException.ErrorCode) {
-                    Result = serializer.Serialize(publishableException.Data),
+                    Result = _serializer.Serialize(publishableException.Data),
                     ReplyType = CommandReturnMode.CommandExecuted
                 };
-                this.resultBus.Send(commandResult, traceInfo);
+                _resultBus.Send(commandResult, traceInfo);
                 return;
             }
 
@@ -242,25 +207,16 @@ namespace Umizoo.Messaging.Handling
             // 如果出现了系统异常则将异常转换成返回结果发送
             if (ex != null) {
                 commandResult = new CommandResult(HandleStatus.Failed, ex.Message) {
-                    Result = serializer.Serialize(ex.Data),
+                    Result = _serializer.Serialize(ex.Data),
                     ReplyType = CommandReturnMode.CommandExecuted
                 };
-                this.resultBus.Send(commandResult, traceInfo);
+                _resultBus.Send(commandResult, traceInfo);
             }
         }
 
         private void InvokeCommandHandler(IHandler commandHandler, Envelope<ICommand> envelope)
         {
-            var context = new CommandContext(
-                this.eventBus,
-                this.resultBus,
-                this.eventStore,
-                this.snapshotStore,
-                this.repository,
-                this.cache);
-            context.CommandId = envelope.MessageId;
-            context.Command = envelope.Body;
-            context.TraceInfo = (TraceInfo)envelope.Items[StandardMetadata.TraceInfo];
+            var context = new CommandContext(_resultBus, _repository, envelope);
 
             ((dynamic)commandHandler).Handle((dynamic)context, (dynamic)envelope.Body);
 
@@ -275,10 +231,10 @@ namespace Umizoo.Messaging.Handling
             var preContext = new ActionExecutingContext(handlerContext);
 
             Func<ActionExecutedContext> continuation = () => new ActionExecutedContext(handlerContext, false, null) {
-                ReturnValue = this.ProcessCommand(handlerContext.Handler, envelope)
+                ReturnValue = ProcessCommand(handlerContext.Handler, envelope)
             };
 
-            Func<ActionExecutedContext> thunk = filters.Reverse().Aggregate(continuation,
+            var thunk = filters.Reverse().Aggregate(continuation,
                 (next, filter) => () => InvokeHandlerMethodFilter(filter, preContext, next));
             return thunk();
         }
@@ -286,19 +242,15 @@ namespace Umizoo.Messaging.Handling
         private object ProcessCommand(IHandler handler, Envelope<ICommand> envelope)
         {
             if (handler is ICommandHandler) {
-                this.TryMultipleInvoke(this.InvokeCommandHandler, handler, envelope);
+                TryMultipleInvoke(InvokeCommandHandler, handler, envelope);
                 return null;
             }
 
-            if (handler is IEnvelopedHandler) {
-                this.TryMultipleInvoke(this.InvokeHandler, handler, envelope);
-            }
-            else {
-                this.TryMultipleInvoke(this.InvokeHandler, handler, envelope.Body);
-            }
+            if (handler is IEnvelopedHandler)
+                TryMultipleInvoke(InvokeHandler, handler, Convert(envelope));
+            else
+                TryMultipleInvoke(InvokeHandler, handler, envelope.Body);
             return CommandResult.CommandExecuted;
         }
-
-        #endregion
     }
 }

@@ -1,4 +1,4 @@
-﻿using Umizoo.Infrastructure;
+﻿using System;
 
 namespace UserRegistration
 {
@@ -16,7 +16,7 @@ namespace UserRegistration
         public User Register(string loginId, string password, string userName, string email)
         {
             if (!_uniqueService.Validate(loginId, _commandId)) {
-                throw new UnrecoverableException("用户名已存在！");
+                throw new ApplicationException("用户名已存在");
             }
 
             return new User(loginId, password, userName, email);

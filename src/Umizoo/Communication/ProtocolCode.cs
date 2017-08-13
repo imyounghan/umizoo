@@ -18,8 +18,8 @@ namespace Umizoo.Communication
         Query = 2,
 
         /// <summary>
-        /// 通知
+        /// 回复
         /// </summary>
-        Notify = 3
+        Reply = 3
     }
 }

@@ -1,14 +1,10 @@
-﻿
+﻿using System.Runtime.Serialization;
+using Umizoo.Messaging;
 
 namespace UserRegistration.ReadModel
 {
-    using System.Runtime.Serialization;
-
-    using Umizoo.Infrastructure;
-    using Umizoo.Messaging;
-
     [DataContract]
-    public class UserAuthentication : MessageBase, IQuery
+    public class UserAuthentication : IQuery
     {
         [DataMember]
         public string LoginId { get; set; }

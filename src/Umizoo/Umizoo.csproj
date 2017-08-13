@@ -34,7 +34,7 @@
     <DocumentationFile>bin\Release\Umizoo.xml</DocumentationFile>
   </PropertyGroup>
   <PropertyGroup>
-    <SignAssembly>true</SignAssembly>
+    <SignAssembly>false</SignAssembly>
   </PropertyGroup>
   <PropertyGroup>
     <AssemblyOriginatorKeyFile>..\\sunsoft.snk</AssemblyOriginatorKeyFile>
@@ -56,88 +56,90 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Configurations\ConnectionMode.cs" />
-    <Compile Include="Communication\ProtocolCode.cs" />
-    <Compile Include="Communication\SocketRequestServer.cs" />
-    <Compile Include="Communication\WcfRemotingClientManager.cs" />
-    <Compile Include="Communication\SocketClient.cs" />
-    <Compile Include="Communication\SocketRemotingClientManager.cs" />
-    <Compile Include="Communication\WcfClient.cs" />
-    <Compile Include="Communication\IContract.cs" />
-    <Compile Include="Communication\SocketReplyServer.cs" />
-    <Compile Include="Communication\WcfReplyServer.cs" />
-    <Compile Include="Communication\WcfRequestServer.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Configurations\ProcessingFlags.cs" />
+    <Compile Include="Infrastructure\Assertions.cs" />
     <Compile Include="Infrastructure\Async\AsyncVoid.cs" />
     <Compile Include="Infrastructure\Async\BeginInvokeDelegate.cs" />
     <Compile Include="Infrastructure\Async\EndInvokeDelegate.cs" />
-    <Compile Include="Infrastructure\Async\OperationCounter.cs" />
     <Compile Include="Infrastructure\Async\SimpleAsyncResult.cs" />
     <Compile Include="Infrastructure\Async\WrappedAsyncResult.cs" />
-    <Compile Include="Configurations\Configuration.cs" />
-    <Compile Include="Configurations\ConfigurationSettings.cs" />
-    <Compile Include="Communication\Request.cs" />
-    <Compile Include="Communication\Response.cs" />
-    <Compile Include="Extensions\TaskExtensions.cs" />
-    <Compile Include="Ensure.cs" />
+    <Compile Include="Infrastructure\Caching\CacheProvider.cs" />
+    <Compile Include="Infrastructure\Caching\CacheRegionAttribute .cs" />
+    <Compile Include="Infrastructure\Caching\CachingAttribute.cs" />
+    <Compile Include="Infrastructure\Caching\CachingMethod.cs" />
+    <Compile Include="Infrastructure\Caching\EmptyCache.cs" />
+    <Compile Include="Infrastructure\Caching\EmptyCacheProvider.cs" />
+    <Compile Include="Infrastructure\Caching\HashtableCache.cs" />
+    <Compile Include="Infrastructure\Caching\HashtableCacheProvider.cs" />
+    <Compile Include="Infrastructure\Caching\ICache.cs" />
+    <Compile Include="Infrastructure\Caching\ICacheProvider.cs" />
+    <Compile Include="Infrastructure\Composition\DefaultObjectContainer.cs" />
+    <Compile Include="Infrastructure\Composition\Interception\InterceptorPipeline.cs" />
+    <Compile Include="Infrastructure\Composition\Interception\InterceptorPipelineKey.cs" />
+    <Compile Include="Infrastructure\Composition\Interception\InterceptorPipelineManager.cs" />
+    <Compile Include="Infrastructure\Filtering\Filter.cs" />
+    <Compile Include="Infrastructure\Filtering\FilterAttribute.cs" />
+    <Compile Include="Infrastructure\Filtering\FilterComparer.cs" />
+    <Compile Include="Infrastructure\Filtering\FilterProviders.cs" />
+    <Compile Include="Infrastructure\Filtering\FilterScope.cs" />
     <Compile Include="Infrastructure\Composition\Interception\GetNextInterceptorDelegate.cs" />
+    <Compile Include="Infrastructure\Filtering\IFilter.cs" />
     <Compile Include="Infrastructure\Composition\Interception\IInterceptor.cs" />
-    <Compile Include="Infrastructure\Composition\Interception\IInterceptorProvider.cs" />
     <Compile Include="Infrastructure\Composition\Interception\IMethodInvocation.cs" />
     <Compile Include="Infrastructure\Composition\Interception\IMethodReturn.cs" />
-    <Compile Include="Infrastructure\Composition\Interception\InterceptorProvider.cs" />
+    <Compile Include="Infrastructure\Composition\Interception\InterceptorAttribute.cs" />
+    <Compile Include="Infrastructure\Composition\Interception\InterceptorAttributeFilterProvider.cs" />
+    <Compile Include="Infrastructure\Filtering\FilterProviderCollection.cs" />
     <Compile Include="Infrastructure\Composition\Interception\InvokeInterceptorDelegate.cs" />
     <Compile Include="Infrastructure\Composition\Interception\IParameterCollection.cs" />
     <Compile Include="Infrastructure\Composition\Interception\MethodInvocation.cs" />
     <Compile Include="Infrastructure\Composition\Interception\MethodReturn.cs" />
     <Compile Include="Infrastructure\Composition\Interception\ParameterCollection.cs" />
-    <Compile Include="Infrastructure\Composition\Interception\Pipeline\InterceptorPipeline.cs" />
-    <Compile Include="Infrastructure\Composition\Interception\Pipeline\InterceptorPipelineKey.cs" />
-    <Compile Include="Infrastructure\Composition\Interception\Pipeline\InterceptorPipelineManager.cs" />
-    <Compile Include="Infrastructure\Composition\InterceptorAttribute.cs" />
-    <Compile Include="Infrastructure\MessageBase.cs" />
+    <Compile Include="Infrastructure\Composition\ObjectContainer.cs" />
+    <Compile Include="Infrastructure\DisposableObject.cs" />
+    <Compile Include="Infrastructure\Composition\IObjectContainer.cs" />
+    <Compile Include="Infrastructure\Composition\Lifecycle.cs" />
+    <Compile Include="Infrastructure\Composition\LifecycleAttribute.cs" />
+    <Compile Include="Infrastructure\Composition\ObjectContainerExtentions.cs" />
+    <Compile Include="Infrastructure\Composition\RegisterAttribute.cs" />
     <Compile Include="Infrastructure\Composition\TypeRegistration.cs" />
-    <Compile Include="Infrastructure\Remoting\RemotingTimeoutException.cs" />
-    <Compile Include="Infrastructure\Socketing\ITcpConnection.cs" />
-    <Compile Include="Infrastructure\Remoting\RemotingRequestException.cs" />
-    <Compile Include="Infrastructure\Remoting\RemotingServerUnAvailableException.cs" />
-    <Compile Include="Infrastructure\Remoting\ResponseFutureAddFailedException.cs" />
-    <Compile Include="Infrastructure\Remoting\IRequestHandler.cs" />
-    <Compile Include="Infrastructure\Remoting\IRequestHandlerContext.cs" />
-    <Compile Include="Infrastructure\Remoting\IResponseHandler.cs" />
-    <Compile Include="Infrastructure\Remoting\RemotingRequest.cs" />
-    <Compile Include="Infrastructure\Remoting\RemotingResponse.cs" />
-    <Compile Include="Infrastructure\Remoting\RemotingUtil.cs" />
-    <Compile Include="Infrastructure\Remoting\ResponseFuture.cs" />
-    <Compile Include="Infrastructure\Remoting\SocketRemotingClient.cs" />
-    <Compile Include="Infrastructure\Remoting\SocketRemotingServer.cs" />
-    <Compile Include="Infrastructure\Remoting\SocketRequestHandlerContext.cs" />
+    <Compile Include="Infrastructure\Filtering\IFilterProvider.cs" />
+    <Compile Include="Infrastructure\Logging\ILogger.cs" />
+    <Compile Include="Infrastructure\Logging\ILoggerFactory.cs" />
+    <Compile Include="Infrastructure\Logging\Log4NetLogger.cs" />
+    <Compile Include="Infrastructure\Logging\Log4NetLoggerFactory.cs" />
+    <Compile Include="Infrastructure\Logging\LogExtensions.cs" />
+    <Compile Include="Infrastructure\Logging\NetFrameworkLogger.cs" />
+    <Compile Include="Infrastructure\Logging\NetFrameworkLoggerFactory.cs" />
+    <Compile Include="Infrastructure\ObjectId.cs" />
     <Compile Include="Infrastructure\SingleEntryGate.cs" />
+    <Compile Include="Communication\IChannel.cs" />
+    <Compile Include="Communication\IClientChannelFactory.cs" />
+    <Compile Include="Communication\ProtocolCode.cs" />
+    <Compile Include="Communication\Request.cs" />
+    <Compile Include="Communication\Response.cs" />
+    <Compile Include="Communication\WcfClientChannelFactory.cs" />
+    <Compile Include="Communication\WcfCommandServer.cs" />
+    <Compile Include="Communication\WcfQueryServer.cs" />
+    <Compile Include="Communication\WcfReplyServer.cs" />
+    <Compile Include="Communication\WcfServerChannel.cs" />
+    <Compile Include="Configurations\ConfigurationExtentions.cs" />
+    <Compile Include="Configurations\ConnectionMode.cs" />
+    <Compile Include="Configurations\ProcessingFlags.cs" />
+    <Compile Include="Extentions.cs" />
+    <Compile Include="Configurations\Configuration.cs" />
+    <Compile Include="Configurations\ConfigurationSettings.cs" />
+    <Compile Include="Infrastructure\IInitializer.cs" />
+    <Compile Include="Infrastructure\ISnapshotStore.cs" />
+    <Compile Include="Infrastructure\NoneSnapshotStore.cs" />
     <Compile Include="Infrastructure\StandardMetadata.cs" />
-    <Compile Include="Infrastructure\UnrecoverableException.cs" />
-    <Compile Include="Infrastructure\Utilities\ByteUtil.cs" />
-    <Compile Include="Infrastructure\Utilities\FlowControlUtil.cs" />
-    <Compile Include="Infrastructure\Socketing\BufferManagement\BufferItemCreator.cs" />
-    <Compile Include="Infrastructure\Socketing\BufferManagement\BufferPool.cs" />
-    <Compile Include="Infrastructure\Socketing\BufferManagement\IBufferPool.cs" />
-    <Compile Include="Infrastructure\Socketing\BufferManagement\IntelliPool.cs" />
-    <Compile Include="Infrastructure\Socketing\BufferManagement\IPool.cs" />
-    <Compile Include="Infrastructure\Socketing\BufferManagement\IPoolItemCreator.cs" />
-    <Compile Include="Infrastructure\Socketing\ClientSocket.cs" />
-    <Compile Include="Infrastructure\Socketing\Framing\IMessageFramer.cs" />
-    <Compile Include="Infrastructure\Socketing\Framing\LengthPrefixMessageFramer.cs" />
-    <Compile Include="Infrastructure\Socketing\IConnectionEventListener.cs" />
-    <Compile Include="Infrastructure\Socketing\ServerSocket.cs" />
-    <Compile Include="Infrastructure\Socketing\SocketSetting.cs" />
+    <Compile Include="Infrastructure\TextSerializerExtensions.cs" />
+    <Compile Include="Infrastructure\Logging\LogManager.cs" />
     <Compile Include="Infrastructure\Utilities\SocketUtil.cs" />
-    <Compile Include="Infrastructure\Socketing\TcpConnection.cs" />
-    <Compile Include="LogManager.cs" />
-    <Compile Include="Messaging\BusExtentions.cs" />
-    <Compile Include="Messaging\CentralService.cs">
-      <SubType>Code</SubType>
-    </Compile>
+    <Compile Include="Messaging\CommandService.cs" />
+    <Compile Include="Messaging\Handling\Consumer.cs" />
+    <Compile Include="Messaging\Handling\ResultNotifyHandler.cs" />
+    <Compile Include="Messaging\Handling\ResultReplyHandler.cs" />
+    <Compile Include="Messaging\MessageBusExtentions.cs" />
     <Compile Include="Messaging\CommandReturnMode.cs" />
     <Compile Include="Messaging\Handling\EventConsumer.cs">
       <SubType>Code</SubType>
@@ -146,10 +148,8 @@
     <Compile Include="Messaging\Handling\IQueryHandler.cs" />
     <Compile Include="Messaging\Handling\PublishableExceptionConsumer.cs" />
     <Compile Include="Messaging\Handling\ResultConsumer.cs" />
-    <Compile Include="Messaging\Handling\ResultConsumerWithLocal.cs" />
-    <Compile Include="Messaging\Handling\ResultConsumerWithSocket.cs" />
-    <Compile Include="Messaging\Handling\ResultConsumerWithWcf.cs" />
     <Compile Include="Messaging\IResultManager.cs" />
+    <Compile Include="Messaging\QueryService.cs" />
     <Compile Include="Messaging\ResultManager.cs" />
     <Compile Include="Messaging\ICommandResult.cs" />
     <Compile Include="Messaging\IQueryResult.cs" />
@@ -159,21 +159,11 @@
     </Compile>
     <Compile Include="Messaging\ICommandService.cs" />
     <Compile Include="Messaging\IQuery.cs" />
-    <Compile Include="Extensions\ConcurrentDictionaryExtensions.cs" />
-    <Compile Include="Infrastructure\Composition\DefaultObjectContainer.cs" />
-    <Compile Include="Infrastructure\DefaultTextSerializer.cs" />
-    <Compile Include="Infrastructure\DisposableObject.cs" />
-    <Compile Include="Extensions\DictionaryExtentions.cs" />
-    <Compile Include="Extensions\EnumerableExtentions.cs" />
-    <Compile Include="Extensions\ObjectExtentions.cs" />
-    <Compile Include="Extensions\TypeExtensions.cs" />
-    <Compile Include="Infrastructure\Composition\IInitializer.cs" />
+    <Compile Include="Infrastructure\TextSerializer.cs" />
     <Compile Include="Infrastructure\IRoutingProvider.cs" />
-    <Compile Include="Infrastructure\ILogger.cs" />
     <Compile Include="Infrastructure\IProcessor.cs" />
     <Compile Include="Infrastructure\ITextSerializer.cs" />
     <Compile Include="Infrastructure\IUniquelyIdentifiable.cs" />
-    <Compile Include="Infrastructure\ObjectId.cs" />
     <Compile Include="Infrastructure\Processor.cs" />
     <Compile Include="Messaging\IVersionedEvent.cs" />
     <Compile Include="Messaging\PageQuery.cs" />
@@ -181,9 +171,6 @@
     <Compile Include="Messaging\HandleResult.cs" />
     <Compile Include="Messaging\QueryResult.cs" />
     <Compile Include="Messaging\SourceInfo.cs" />
-    <Compile Include="Infrastructure\Composition\IObjectContainer.cs" />
-    <Compile Include="Infrastructure\Composition\Lifecycle.cs" />
-    <Compile Include="Infrastructure\Composition\LifecycleAttribute.cs" />
     <Compile Include="Messaging\Command.cs" />
     <Compile Include="Messaging\Handling\CommandConsumer.cs" />
     <Compile Include="Messaging\CommandResult.cs" />
@@ -200,16 +187,10 @@
     <Compile Include="Messaging\Handling\ActionExecutedContext.cs" />
     <Compile Include="Messaging\Handling\ActionExecutingContext.cs" />
     <Compile Include="Messaging\Handling\ExceptionContext.cs" />
-    <Compile Include="Messaging\Handling\Filter.cs" />
-    <Compile Include="Messaging\Handling\FilterAttribute.cs" />
     <Compile Include="Messaging\Handling\FilterAttributeFilterProvider.cs" />
     <Compile Include="Messaging\Handling\FilterInfo.cs" />
-    <Compile Include="Messaging\Handling\FilterProviderCollection.cs" />
-    <Compile Include="Messaging\Handling\FilterProviders.cs" />
-    <Compile Include="Messaging\Handling\FilterScope.cs" />
     <Compile Include="Messaging\Handling\HandlerContext.cs" />
     <Compile Include="Messaging\Handling\HandlerInstanceFilterProvider.cs" />
-    <Compile Include="Messaging\Handling\HandlerNotFoundException.cs" />
     <Compile Include="Messaging\Handling\IActionFilter.cs" />
     <Compile Include="Messaging\Handling\ICommandContext.cs" />
     <Compile Include="Messaging\Handling\ICommandHandler.cs" />
@@ -217,8 +198,6 @@
     <Compile Include="Messaging\Handling\IEventContext.cs" />
     <Compile Include="Messaging\Handling\IEventHandler.cs" />
     <Compile Include="Messaging\Handling\IExceptionFilter.cs" />
-    <Compile Include="Messaging\Handling\IFilter.cs" />
-    <Compile Include="Messaging\Handling\IFilterProvider.cs" />
     <Compile Include="Messaging\Handling\IHandler.cs" />
     <Compile Include="Messaging\Handling\IMessageHandler.cs" />
     <Compile Include="Messaging\ICommand.cs" />
@@ -231,29 +210,23 @@
     <Compile Include="Messaging\MessageProducer.cs" />
     <Compile Include="Messaging\MessageReceiver.cs" />
     <Compile Include="Messaging\TraceInfo.cs" />
-    <Compile Include="Infrastructure\Composition\ObjectContainer.cs" />
     <Compile Include="Messaging\VersionedEvent.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Infrastructure\Composition\RegisterAttribute.cs" />
+    <Compile Include="Seeds\AggregateInnerHandlerProvider.cs" />
     <Compile Include="Seeds\AggregateRoot.cs" />
-    <Compile Include="Seeds\CacheRegionAttribute.cs" />
+    <Compile Include="Seeds\AggregateStorageInMemory.cs" />
+    <Compile Include="Seeds\IAggregateStorage.cs" />
     <Compile Include="Seeds\Entity.cs" />
     <Compile Include="Seeds\EntityNotFoundException.cs" />
     <Compile Include="Seeds\EventSourced.cs">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="Seeds\IAggregateRoot.cs" />
-    <Compile Include="Seeds\ICache.cs" />
     <Compile Include="Seeds\IEventSourced.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="Seeds\InnerHandlerProvider.cs" />
     <Compile Include="Seeds\IRepository.cs" />
-    <Compile Include="Seeds\ISnapshotStore.cs" />
-    <Compile Include="Seeds\LocalCache.cs" />
-    <Compile Include="Seeds\MemoryRepository.cs" />
-    <Compile Include="Seeds\NoneSnapshotStore.cs" />
-    <Compile Include="Seeds\ValueObject.cs" />
+    <Compile Include="Seeds\Repository.cs" />
   </ItemGroup>
   <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

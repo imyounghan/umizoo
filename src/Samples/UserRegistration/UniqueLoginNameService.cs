@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
-using Umizoo;
+using Umizoo.Infrastructure.Composition;
 
 namespace UserRegistration
 {

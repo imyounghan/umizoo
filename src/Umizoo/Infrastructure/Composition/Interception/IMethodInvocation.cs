@@ -1,12 +1,14 @@
-﻿using System;
+﻿// Copyright © 2015 ~ 2017 Sunsoft Studio, All rights reserved.
+// Umizoo is a framework can help you develop DDD and CQRS style applications.
+// 
+// Created by young.han with Visual Studio 2017 on 2017-08-07.
+
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 
 namespace Umizoo.Infrastructure.Composition.Interception
 {
-    /// <summary>
-    /// 
-    /// </summary>
     public interface IMethodInvocation
     {
         /// <summary>
@@ -38,5 +40,5 @@ namespace Umizoo.Infrastructure.Composition.Interception
         /// 创建一个正确返回的结果
         /// </summary>
         IMethodReturn CreateMethodReturn(object returnValue, params object[] outputs);
-    }    
+    }
 }

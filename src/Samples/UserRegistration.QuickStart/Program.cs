@@ -1,29 +1,47 @@
-﻿
-
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Threading;
+using log4net.Config;
+using Microsoft.Practices.ServiceLocation;
+using Umizoo.Configurations;
+using Umizoo.Infrastructure.Composition;
+using Umizoo.Messaging;
+using UserRegistration.Commands;
+using UserRegistration.ReadModel;
 
 namespace UserRegistration.QuickStart
 {
-    using System;
-    using System.Collections.Generic;
-    using System.IO;
-    using System.Threading;
-
-    using log4net.Config;
-
-    using Umizoo.Configurations;
-    using Umizoo.Infrastructure.Composition;
-    using Umizoo.Messaging;
-
-    using UserRegistration.Commands;
-    using UserRegistration.ReadModel;
-
-    class Program
+    internal class Program
     {
-        static void Main(string[] args)
+        class DefaultServiceLocator : ServiceLocatorImplBase
+        {
+            private readonly IObjectContainer _container;
+
+            public DefaultServiceLocator(IObjectContainer container)
+            {
+                _container = container;
+            }
+
+            protected override object DoGetInstance(Type serviceType, string key)
+            {
+                return _container.Resolve(serviceType, key);
+            }
+
+            protected override IEnumerable<object> DoGetAllInstances(Type serviceType)
+            {
+                return _container.ResolveAll(serviceType);
+            }
+        }
+
+        private static void Main(string[] args)
         {
             XmlConfigurator.ConfigureAndWatch(new FileInfo("log4net.config"));
 
-            Configuration.Current.EnableService().Done();
+            Configuration.Create().Accept(container =>
+            {
+                ServiceLocator.SetLocatorProvider(() => new DefaultServiceLocator(container));
+            }).EnableService().Done();
 
 
             Console.WriteLine("输入任意键演示...");
@@ -31,8 +49,9 @@ namespace UserRegistration.QuickStart
 
 
             Console.WriteLine("开始创建用户...");
-            var commandService = ObjectContainer.Instance.Resolve<ICommandService>();
-            var commandResult = commandService.Execute(new RegisterUser {
+            var commandService = ServiceLocator.Current.GetInstance<ICommandService>();
+            var commandResult = commandService.Execute(new RegisterUser
+            {
                 UserName = "hanyang",
                 Password = "123456",
                 LoginId = "young.han",
@@ -67,7 +86,7 @@ namespace UserRegistration.QuickStart
             //Console.WriteLine("成功完成的命令数量：{0}", tasks.Where(p => p.IsCompleted).Count());
             Thread.Sleep(2000);
 
-            var queryService = ObjectContainer.Instance.Resolve<IQueryService>();
+            var queryService = ServiceLocator.Current.GetInstance<IQueryService>();
 
             var queryResult = queryService.Fetch<ICollection<UserModel>>(new FindAllUser());
             Console.WriteLine("共有 {0} 个用户。", queryResult.Count);
@@ -76,13 +95,9 @@ namespace UserRegistration.QuickStart
 
             var authoResult =
                 queryService.Fetch<bool>(
-                    new UserAuthentication() { LoginId = "young.han", Password = "123456", IpAddress = "127.0.0.1" });
-            if(authoResult) {
-                Console.WriteLine("登录成功。");
-            }
-            else {
-                Console.WriteLine("用户名或密码错误。");
-            }
+                    new UserAuthentication {LoginId = "young.han", Password = "123456", IpAddress = "127.0.0.1"});
+            if (authoResult) Console.WriteLine("登录成功。");
+            else Console.WriteLine("用户名或密码错误。");
 
             Console.ReadKey();
         }

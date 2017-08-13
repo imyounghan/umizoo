@@ -1,8 +1,12 @@
-﻿
+﻿// Copyright © 2015 ~ 2017 Sunsoft Studio, All rights reserved.
+// Umizoo is a framework can help you develop DDD and CQRS style applications.
+// 
+// Created by young.han with Visual Studio 2017 on 2017-08-09.
+
+using System;
+
 namespace Umizoo.Messaging.Handling
 {
-    using System;
-
     /// <summary>
     /// 执行操作方法后调用的上下文
     /// </summary>
@@ -17,8 +21,8 @@ namespace Umizoo.Messaging.Handling
         public ActionExecutedContext(HandlerContext handlerContext, bool canceled, Exception exception)
             : base(handlerContext)
         {
-            this.Canceled = canceled;
-            this.Exception = exception;
+            Canceled = canceled;
+            Exception = exception;
         }
 
         /// <summary>

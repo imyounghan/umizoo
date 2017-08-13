@@ -1,62 +1,67 @@
-﻿
+﻿using System;
+using System.IO;
+using log4net.Appender;
+using log4net.Config;
+using log4net.Layout;
+using Umizoo.Infrastructure;
+using Umizoo.Infrastructure.Composition;
+using Umizoo.Messaging;
 
 namespace Umizoo.Configurations
 {
-    using System;
-    using System.IO;
-
-    using log4net.Appender;
-    using log4net.Config;
-    using log4net.Layout;
-    
-    using Umizoo.Infrastructure;
-    using Umizoo.Messaging;
-
     public static class ConfigurationExtentions
     {
         private static void ConfigureLog4Net()
         {
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            string relativeSearchPath = AppDomain.CurrentDomain.RelativeSearchPath;
-            string binPath = string.IsNullOrEmpty(relativeSearchPath) ? baseDir : Path.Combine(baseDir, relativeSearchPath);
-            string log4NetConfigFile = string.IsNullOrEmpty(binPath) ? "log4net.config" : Path.Combine(binPath, "log4net.config");
+            var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            var relativeSearchPath = AppDomain.CurrentDomain.RelativeSearchPath;
+            var binPath = string.IsNullOrEmpty(relativeSearchPath)
+                ? baseDir
+                : Path.Combine(baseDir, relativeSearchPath);
+            var log4NetConfigFile = string.IsNullOrEmpty(binPath)
+                ? "log4net.config"
+                : Path.Combine(binPath, "log4net.config");
 
-            if(File.Exists(log4NetConfigFile)) {
-                XmlConfigurator.ConfigureAndWatch(new FileInfo(log4NetConfigFile));
-            }
-            else {
-                BasicConfigurator.Configure(new ConsoleAppender { Layout = new PatternLayout() });
-            }
+            if (File.Exists(log4NetConfigFile)) XmlConfigurator.ConfigureAndWatch(new FileInfo(log4NetConfigFile));
+            else BasicConfigurator.Configure(new ConsoleAppender {Layout = new PatternLayout()});
         }
 
-        public static Configuration UseKafka(this Configuration that, 
-            ProcessingFlags flags = ProcessingFlags.All, 
+        public static Configuration UseKafka(this Configuration that,
+            ProcessingFlags flags = Configuration.AllProcessingFlags,
             params string[] topics)
         {
             ConfigureLog4Net();
 
             topics.ForEach(KafkaUtils.CreateTopicIfNotExists);
 
-            that.SetDefault<ITopicProvider, DefaultTopicProvider>();
 
-            if(flags == ProcessingFlags.All || (flags & ProcessingFlags.Command) == ProcessingFlags.Command) {
-                that.SetDefault<IMessageBus<ICommand>, CommandSender>();
-                that.SetDefault<IMessageReceiver<Envelope<ICommand>>, CommandReceiver>();
-            }
-            if(flags == ProcessingFlags.All || (flags & ProcessingFlags.Event) == ProcessingFlags.Event) {
-                that.SetDefault<IMessageBus<IEvent>, EventSender>();
-                that.SetDefault<IMessageReceiver<Envelope<IEvent>>, EventReceiver>();
-            }
-            if(flags == ProcessingFlags.All || (flags & ProcessingFlags.PublishableException) == ProcessingFlags.PublishableException) {
-                that.SetDefault<IMessageBus<IPublishableException>, PublishableExceptionSender>();
-                that.SetDefault<IMessageReceiver<Envelope<IPublishableException>>, PublishableExceptionReceiver>();
-            }
-            if(flags == ProcessingFlags.All || (flags & ProcessingFlags.Query) == ProcessingFlags.Query) {
-                that.SetDefault<IMessageBus<IQuery>, QuerySender>();
-                that.SetDefault<IMessageReceiver<Envelope<IQuery>>, QueryReceiver>();
-            }
+            return that.Accept(container =>
+            {
+                container.RegisterType<ITopicProvider, DefaultTopicProvider>();
 
-            return that;
+                if ((flags & ProcessingFlags.Command) == ProcessingFlags.Command)
+                {
+                    container.RegisterType<IMessageBus<ICommand>, CommandSender>();
+                    container.RegisterType<IMessageReceiver<Envelope<ICommand>>, CommandReceiver>();
+                }
+                if ((flags & ProcessingFlags.Event) == ProcessingFlags.Event)
+                {
+                    container.RegisterType<IMessageBus<IEvent>, EventSender>();
+                    container.RegisterType<IMessageReceiver<Envelope<IEvent>>, EventReceiver>();
+                }
+                if ((flags & ProcessingFlags.PublishableException) == ProcessingFlags.PublishableException)
+                {
+                    container.RegisterType<IMessageBus<IPublishableException>, PublishableExceptionSender>();
+                    container
+                        .RegisterType<IMessageReceiver<Envelope<IPublishableException>>, PublishableExceptionReceiver
+                        >();
+                }
+                if ((flags & ProcessingFlags.Query) == ProcessingFlags.Query)
+                {
+                    container.RegisterType<IMessageBus<IQuery>, QuerySender>();
+                    container.RegisterType<IMessageReceiver<Envelope<IQuery>>, QueryReceiver>();
+                }
+            });
         }
     }
 }

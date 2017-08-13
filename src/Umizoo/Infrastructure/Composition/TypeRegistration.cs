@@ -1,87 +1,72 @@
-﻿using System;
+﻿// Copyright © 2015 ~ 2017 Sunsoft Studio, All rights reserved.
+// Umizoo is a framework can help you develop DDD and CQRS style applications.
+// 
+// Created by young.han with Visual Studio 2017 on 2017-08-06.
+
+
+using System;
 
 namespace Umizoo.Infrastructure.Composition
 {
-    /// <summary>
-    /// 类型注册
-    /// </summary>
-    public sealed class TypeRegistration
+    public class TypeRegistration
     {
-        #region Constructors and Destructors
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="TypeRegistration"/> class. 
-        /// </summary>
-        public TypeRegistration(Type type)
-            : this(type, string.Empty)
+        public TypeRegistration(Type type, bool initialization)
+            : this(type, null, initialization)
         {
         }
 
-        /// <summary>
-        /// Initializes a new instance of the <see cref="TypeRegistration"/> class. 
-        /// </summary>
+        public TypeRegistration(Type type, string name, bool initialization)
+            : this(type, name)
+        {
+            InitializationRequired = initialization;
+        }
+
         public TypeRegistration(Type type, string name)
         {
-            this.Type = type;
-            this.Name = name;
+            Assertions.NotNull(type, "type");
+            Type = type;
+            Name = name;
         }
-
-        #endregion
-
-        #region Public Properties
 
         /// <summary>
         ///     名称
         /// </summary>
-        public string Name { get; private set; }
+        public string Name { get; }
 
         /// <summary>
         ///     类型
         /// </summary>
-        public Type Type { get; private set; }
-
-        #endregion
-
-        #region Methods and Operators
+        public Type Type { get; }
 
         /// <summary>
-        /// 判断该实例与当前实例是否相同
+        ///     表示需要初始化该实例
         /// </summary>
+        public bool InitializationRequired { get; }
+
         public override bool Equals(object obj)
         {
-            var other = obj as TypeRegistration;
-
-            if(other == null) {
+            if (obj.IsNull())
                 return false;
-            }
 
-            if(ReferenceEquals(this, other)) {
+            if (ReferenceEquals(this, obj))
                 return true;
-            }
 
-            if(this.Type != other.Type) {
+            var other = obj as TypeRegistration;
+            if (other == null)
                 return false;
-            }
 
-            if(!string.Equals(this.Name, other.Name, StringComparison.Ordinal)) {
+            if (Type != other.Type)
                 return false;
-            }
+
+            if (!string.Equals(Name, other.Name, StringComparison.Ordinal))
+                return false;
 
             return true;
         }
 
-        /// <summary>
-        /// 获取该实例的哈希代码
-        /// </summary>
         public override int GetHashCode()
         {
-            if(string.IsNullOrEmpty(this.Name)) {
-                return this.Type.GetHashCode();
-            }
-
-            return this.Type.GetHashCode() ^ this.Name.GetHashCode();
+            return Type.GetHashCode() + (string.IsNullOrWhiteSpace(Name) ? 0 : Name.GetHashCode());
         }
-
-        #endregion
     }
 }

@@ -1,28 +1,22 @@
-﻿
+﻿using System.Runtime.Serialization;
+using System.Web.Script.Serialization;
+using Umizoo.Infrastructure;
 
 namespace Umizoo.Messaging
 {
-    using System.Runtime.Serialization;
-    using System.Web.Script.Serialization;
-
-    using Umizoo.Infrastructure;
-
     [DataContract]
     public class CommandDescriptor : QueryDescriptor
     {
         public CommandDescriptor()
-        { }
+        {
+        }
 
         public CommandDescriptor(ICommand command)
         {
             var keyProvider = command as IRoutingProvider;
-            if(keyProvider != null) {
-                this.Key = keyProvider.GetRoutingKey();
-            }
-            else {
-                this.Key = string.Empty;
-            }
-            this.TypeName = command.GetType().Name;
+            if (keyProvider != null) Key = keyProvider.GetRoutingKey();
+            else Key = string.Empty;
+            TypeName = command.GetType().Name;
         }
 
         [IgnoreDataMember]
@@ -34,7 +28,7 @@ namespace Umizoo.Messaging
 
         public override string GetKey()
         {
-            return this.Key;
+            return Key;
         }
 
         public override string ToString()

@@ -14,9 +14,21 @@ namespace Umizoo.Infrastructure.Composition
         { }
 
         public UnityObjectContainer(IUnityContainer container)
+            : this(container, null)
+        {
+        }
+
+
+        private UnityObjectContainer(IUnityContainer container, IObjectContainer parentContainer)
+            : base(parentContainer)
         {
             this._container = container;
             container.RegisterInstance<IObjectContainer>(this);
+        }
+
+        public override IObjectContainer CreateChildContainer()
+        {
+            return new UnityObjectContainer(_container.CreateChildContainer(), this);
         }
 
         public override bool IsRegistered(Type type, string name)
@@ -29,7 +41,7 @@ namespace Umizoo.Infrastructure.Composition
             }
         }
 
-        public override void RegisterInstance(Type type, string name, object instance)
+        public override void RegisterInstance(Type type, object instance, string name)
         {
             var lifetime = new ContainerControlledLifetimeManager();
             if(string.IsNullOrEmpty(name)) {

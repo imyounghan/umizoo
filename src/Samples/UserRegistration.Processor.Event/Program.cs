@@ -10,9 +10,10 @@ namespace UserRegistration.Processor.Event
     {
         static void Main(string[] args)
         {
-            Configuration.Current
+            Configuration.Create()
                 .UseKafka(ProcessingFlags.Command | ProcessingFlags.Event | ProcessingFlags.Query, "Events", "Queries")
-                .EnableProcessors(ProcessingFlags.Event | ProcessingFlags.Query, ConnectionMode.Wcf)
+                .EnableProcessors(ProcessingFlags.Event | ProcessingFlags.Query)
+                .EnableService(ConnectionMode.Wcf)
                 .Done();
 
             Console.WriteLine("type 'ESC' key to exit event consumer...");

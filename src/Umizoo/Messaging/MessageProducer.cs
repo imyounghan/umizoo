@@ -1,4 +1,11 @@
-﻿
+﻿// Copyright © 2015 ~ 2017 Sunsoft Studio, All rights reserved.
+// Umizoo is a framework can help you develop DDD and CQRS style applications.
+// 
+// Created by young.han with Visual Studio 2017 on 2017-08-08.
+
+
+using Umizoo.Infrastructure.Logging;
+
 namespace Umizoo.Messaging
 {
     using System.Collections.Concurrent;
@@ -12,42 +19,37 @@ namespace Umizoo.Messaging
         /// <summary>
         /// 消息队列
         /// </summary>
-        private readonly BlockingCollection<Envelope<TMessage>> broker;
+        private readonly BlockingCollection<Envelope<TMessage>> _broker;
 
         public MessageProducer()
         {
-            this.broker = new BlockingCollection<Envelope<TMessage>>();
+            _broker = new BlockingCollection<Envelope<TMessage>>();
         }
 
 
-        /// <summary>
-        /// 从队列里取出消息
-        /// </summary>
-        /// <param name="cancellationToken">通知取消的令牌</param>
-        protected override void ReceiveMessages(CancellationToken cancellationToken)
+        protected override void Working(CancellationToken cancellationToken)
         {
-            while (!cancellationToken.IsCancellationRequested) {
-                var envelope = this.broker.Take(cancellationToken);
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var envelope = _broker.Take(cancellationToken);
 
                 if (LogManager.Default.IsDebugEnabled) {
-                    LogManager.Default.DebugFormat(
-                        "Take an envelope '{0}' from local queue.", envelope);
+                    LogManager.Default.DebugFormat("Take an envelope '{0}' from local queue.", envelope);
                 }
 
-                this.OnMessageReceived(this, envelope);
+                OnMessageReceived(this, envelope);
             }
         }
 
-        #region IMessageBus<TMessage> 成员
 
-        public virtual void Send(Envelope<TMessage> envelope)
+        public void Send(Envelope<TMessage> envelope)
         {
             if (LogManager.Default.IsDebugEnabled) {
                 LogManager.Default.DebugFormat(
                     "Prepare to add an envelope '{0}' in local queue.", envelope);
             }
 
-            bool success = this.broker.TryAdd(envelope, 5000);
+            bool success = _broker.TryAdd(envelope, 5000);
 
             if (!success && LogManager.Default.IsDebugEnabled) {
                 LogManager.Default.DebugFormat(
@@ -55,11 +57,9 @@ namespace Umizoo.Messaging
             }
         }
 
-        public virtual void Send(IEnumerable<Envelope<TMessage>> envelopes)
+        public void Send(IEnumerable<Envelope<TMessage>> envelopes)
         {
-            envelopes.ForEach(this.Send);
+            envelopes.ForEach(Send);
         }
-
-        #endregion
     }
 }

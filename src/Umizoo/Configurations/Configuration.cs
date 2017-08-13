@@ -1,671 +1,209 @@
-﻿
+﻿// Copyright © 2015 ~ 2017 Sunsoft Studio, All rights reserved.
+// Umizoo is a framework can help you develop DDD and CQRS style applications.
+// 
+// Created by young.han with Visual Studio 2017 on 2017-08-09.
+
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Reflection;
+using Umizoo.Infrastructure.Caching;
+using Umizoo.Infrastructure.Composition;
+using Umizoo.Infrastructure.Logging;
+using Umizoo.Infrastructure;
+using Umizoo.Messaging;
+using Umizoo.Messaging.Handling;
+using Umizoo.Seeds;
+
 namespace Umizoo.Configurations
 {
-    using System;
-    using System.Collections.Generic;
-    using System.Diagnostics;
-    using System.IO;
-    using System.Linq;
-    using System.Reflection;
-    using Umizoo.Communication;
-    using Umizoo.Infrastructure;
-    using Umizoo.Infrastructure.Composition;
-    using Umizoo.Messaging;
-    using Umizoo.Messaging.Handling;
-    using Umizoo.Seeds;
-
     /// <summary>
     ///     引导程序
     /// </summary>
-    public class Configuration
+    public class Configuration : Processor
     {
-        #region Static Fields
+        public const ProcessingFlags AllProcessingFlags = ProcessingFlags.Command | ProcessingFlags.Event | ProcessingFlags.PublishableException | ProcessingFlags.Result | ProcessingFlags.Query;
 
-        /// <summary>
-        ///     当前配置
-        /// </summary>
-        public static readonly Configuration Current = new Configuration();
+        public static IDictionary<string, Type> CommandTypes { get; private set; }
 
-        #endregion
+        public static IDictionary<string, Type> EventTypes { get; private set; }
 
-        #region Fields
+        public static IDictionary<string, Type> AggregateTypes { get; private set; }
 
-        private readonly Stopwatch _stopwatch;
+        public static IDictionary<string, Type> PublishableExceptionTypes { get; private set; }
+
+        public static IDictionary<string, Type> QueryTypes { get; private set; }
+
+        //public static IDictionary<string, Type> ResultTypes { get; private set; }
+
+        private readonly IObjectContainer _container;
         private List<Assembly> _assemblies;
-        private HashSet<Component> _components;
+        private Stopwatch _stopwatch;
 
-        #endregion
-
-        #region Constructors and Destructors
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="Configuration"/> class. 
-        /// </summary>
-        protected Configuration()
+        private Configuration(IObjectContainer container)
         {
-            this._assemblies = new List<Assembly>();
-            this._components = new HashSet<Component>();
-            this._stopwatch = Stopwatch.StartNew();
-            this.Status = ServerStatus.Running;
+            _assemblies = new List<Assembly>();
+            _stopwatch = Stopwatch.StartNew();
+            _container = container;
         }
 
-        #endregion
-
-        #region Enums
-
-        /// <summary>
-        ///     服务状态
-        /// </summary>
-        public enum ServerStatus
+        public static Configuration Create()
         {
-            /// <summary>
-            ///     运行中
-            /// </summary>
-            Running,
-
-            /// <summary>
-            ///     已启动
-            /// </summary>
-            Started,
-
-            /// <summary>
-            ///     已停止
-            /// </summary>
-            Stopped
+            return Create(new DefaultObjectContainer());
         }
 
+        public static Configuration Create(IObjectContainer container)
+        {
+            return new Configuration(container);
+        }
 
-        #endregion
-
-        #region Public Properties
-
-        /// <summary>
-        ///     当前服务器状态
-        /// </summary>
-        public ServerStatus Status { get; private set; }
-
-        public IDictionary<string, Type> CommandTypes { get; private set; }
-
-        public IDictionary<string, Type> EventTypes { get; private set; }
-
-        public IDictionary<string, Type> AggregateTypes { get; private set; }
-
-        public IDictionary<string, Type> PublishableExceptionTypes { get; private set; }
-
-        public IDictionary<string, Type> QueryTypes { get; private set; }
-
-        public IDictionary<string, Type> ResultTypes { get; private set; }
-        #endregion
-
-        #region Methods and Operators
+        public Configuration Accept(Action<IObjectContainer> action)
+        {
+            action(_container);
+            return this;
+        }
 
         /// <summary>
         ///     配置完成。
         /// </summary>
         public void Done()
         {
-            this.Done(new DefaultObjectContainer());
-        }
-
-        /// <summary>
-        /// 配置完成。
-        /// </summary>
-        public void Done(IObjectContainer container)
-        {
-            if (this.Status != ServerStatus.Running)
-            {
+            if (_assemblies.IsNull())
                 return;
-            }
 
-            if (this._assemblies.Count == 0)
+            if (_assemblies.Count == 0)
             {
                 this.LoadAssemblies();
 
-                if (LogManager.Default.IsDebugEnabled) {
+                if (LogManager.Default.IsDebugEnabled)
                     LogManager.Default.DebugFormat("load assemblies completed. [{0}]",
-                       string.Join("; ", _assemblies.Select(assembly => assembly.FullName)));
-                }
+                        string.Join("; ", _assemblies.Select(assembly => assembly.FullName)));
             }
 
-            ObjectContainer.Instance = container;
+            var allTypes = _assemblies.SelectMany(assembly => assembly.GetTypes()).ToArray();
+            var nonAbstractTypes = allTypes.Where(type => type.IsClass && !type.IsAbstract).ToArray();
 
-            Type[] nonAbstractTypes =
-                this._assemblies.SelectMany(assembly => assembly.GetTypes())
-                    .Where(type => type.IsClass && !type.IsAbstract)
-                    .ToArray();
+            CommandTypes = nonAbstractTypes.Where(typeof(ICommand).IsAssignableFrom)
+                .ToDictionary(type => type.Name, type => type);
+            EventTypes = nonAbstractTypes.Where(typeof(IEvent).IsAssignableFrom)
+                .ToDictionary(type => type.Name, type => type);
+            AggregateTypes = nonAbstractTypes.Where(typeof(IAggregateRoot).IsAssignableFrom)
+                .ToDictionary(type => type.Name, type => type);
+            PublishableExceptionTypes = nonAbstractTypes.Where(typeof(IPublishableException).IsAssignableFrom)
+                .ToDictionary(type => type.Name, type => type);
+            QueryTypes = nonAbstractTypes.Where(typeof(IQuery).IsAssignableFrom)
+                .ToDictionary(type => type.Name, type => type);
 
-            this.CommandTypes =
-                nonAbstractTypes.Where(type => typeof(ICommand).IsAssignableFrom(type))
-                    .ToDictionary(type => type.Name, type => type);
-            this.EventTypes =
-                nonAbstractTypes.Where(type => typeof(IEvent).IsAssignableFrom(type))
-                    .ToDictionary(type => type.Name, type => type);
-            this.PublishableExceptionTypes =
-                nonAbstractTypes.Where(type => typeof(IPublishableException).IsAssignableFrom(type))
-                    .ToDictionary(type => type.Name, type => type);
-            this.AggregateTypes =
-                nonAbstractTypes.Where(type => typeof(IEventSourced).IsAssignableFrom(type))
-                    .ToDictionary(type => type.Name, type => type);
-            this.QueryTypes =
-                nonAbstractTypes.Where(type => typeof(IQuery).IsAssignableFrom(type))
-                    .ToDictionary(type => type.Name, type => type);
-            this.ResultTypes =
-                nonAbstractTypes.Where(type => typeof(IResult).IsAssignableFrom(type))
-                    .ToDictionary(type => type.Name, type => type);
+            RegisterComponents(nonAbstractTypes);
+            RegisterDefaultComponents();
+            RegisterHandler(nonAbstractTypes);
 
+            _container.Complete();
 
-            this.RegisterComponents(nonAbstractTypes);
-            this.RegisterHandlerAndFetcher(nonAbstractTypes);
-
-            // this.OnAssembliesLoaded(_assemblies, nonAbstractTypes);
-            this.RegisterDefaultComponents();
-
-            List<Component> initializerComponents = new List<Component>();
-            foreach (var component in _components)
-            {
-                component.Register(container);
-                if (component.MustbeInitialize())
-                {
-                    initializerComponents.Add(component);
-                }
-            }
-
-            HashSet<IInitializer> initializers = new HashSet<IInitializer>();
-            foreach (var component in initializerComponents)
-            {
-                var initializer = component.GetInstance(container) as IInitializer;
-                if (initializer != null)
-                {
-                    initializers.Add(initializer);
-                }
-            }
-
-            foreach (var initializer in initializers)
-            {
-                initializer.Initialize(container, this._assemblies);
-            }
+            _container.RegisteredTypes.Where(component => component.InitializationRequired)
+                .Select(component => _container.Resolve(component.Type, component.Name))
+                .OfType<IInitializer>()
+                .Distinct()
+                .ForEach(initializer => initializer.Initialize(_container, allTypes));
 
 
-            this._assemblies.Clear();
-            this._components.Clear();
+            _assemblies.Clear();
+            _assemblies = null;
 
-            this._assemblies = null;
-            this._components = null;
+            Start();
 
-            this.Start();
+            _stopwatch.Stop();
 
-            this._stopwatch.Stop();
+            LogManager.Default.InfoFormat("system is working, used time:{0}ms.", _stopwatch.ElapsedMilliseconds);
 
-            LogManager.Default.InfoFormat("system is working, used time:{0}ms.", this._stopwatch.ElapsedMilliseconds);
+            _stopwatch = null;
         }
 
         /// <summary>
-        /// 加载程序集
+        ///     加载程序集
         /// </summary>
         public Configuration LoadAssemblies(Assembly[] assemblies)
         {
-            this._assemblies.Clear();
-            this._assemblies.AddRange(assemblies);
+            _assemblies.Clear();
+            _assemblies.AddRange(assemblies);
 
             return this;
         }
 
-        /// <summary>
-        /// 设置组件
-        /// </summary>
-        public Configuration SetDefault(Type type, object instance, string name = null)
+        protected override void Dispose(bool disposing)
         {
-            if (this.Status != ServerStatus.Running) {
-                throw new ApplicationException(
-                    "system is working, can not register type, please execute before 'Done' method.");
-            }
-
-            Ensure.NotNull(type, "type");
-
-            this._components.Add(new Component(type, name, instance));
-
-            return this;
         }
 
-        /// <summary>
-        /// 设置组件
-        /// </summary>
-        public Configuration SetDefault(Type type, string name, Lifecycle lifecycle = Lifecycle.Singleton)
+        protected override void Start()
         {
-            if (this.Status != ServerStatus.Running) {
-                throw new ApplicationException(
-                    "system is working, can not register type, please execute before 'Done' method.");
-            }
-
-            Ensure.NotNull(type, "type");
-
-            this._components.Add(new Component(type, name, lifecycle));
-
-            return this;
+            _container.ResolveAll<IProcessor>().ForEach(p => p.Start());
         }
 
-        /// <summary>
-        /// 设置组件
-        /// </summary>
-        public Configuration SetDefault(Type from, Type to, string name, Lifecycle lifecycle = Lifecycle.Singleton)
+        protected override void Stop()
         {
-            if (this.Status != ServerStatus.Running) {
-                throw new ApplicationException(
-                    "system is working, can not register type, please execute before 'done' method.");
-            }
-
-            Ensure.NotNull(from, "type");
-            Ensure.NotNull(to, "type");
-
-            this._components.Add(new Component(from, to, name, lifecycle));
-
-            return this;
+            _container.ResolveAll<IProcessor>().ForEach(p => p.Stop());
         }
 
-        /// <summary>
-        ///     启动相关Processes
-        /// </summary>
-        public virtual void Start()
+        private static Lifecycle GetLifecycle(Type type)
         {
-            if (this.Status == ServerStatus.Started) {
-                return;
-            }
+            var attribute = type.GetSingleAttribute<LifecycleAttribute>(false);
+            if (!attribute.IsNull())
+                return attribute.Lifecycle;
 
-            ObjectContainer.Instance.ResolveAll<IProcessor>().ForEach(p => p.Start());
-
-            this.Status = ServerStatus.Started;
-        }
-
-        /// <summary>
-        ///     停止相关Processes
-        /// </summary>
-        public virtual void Stop()
-        {
-            if (this.Status == ServerStatus.Stopped) {
-                return;
-            }
-
-            ObjectContainer.Instance.ResolveAll<IProcessor>().ForEach(p => p.Stop());
-
-            this.Status = ServerStatus.Stopped;
-        }
-
-
-        private static bool FilterType(Type type)
-        {
-            if (!type.IsGenericType) {
-                return false;
-            }
-
-            Type genericType = type.GetGenericTypeDefinition();
-
-            return IsMessageHandlerInterfaceType(genericType) || IsQueryHandlerInterfaceType(genericType);
-        }
-
-        private static bool IsQueryHandlerInterfaceType(Type genericType)
-        {
-            return genericType == typeof(IQueryHandler<,>);
-        }
-
-        private static bool IsMessageHandlerInterfaceType(Type genericType)
-        {
-            return genericType == typeof(IMessageHandler<>) || genericType == typeof(IEnvelopedMessageHandler<>)
-                   || genericType == typeof(ICommandHandler<>) || genericType == typeof(IEventHandler<>);
+            return Lifecycle.Singleton;
         }
 
         private void RegisterComponents(IEnumerable<Type> types)
         {
-            IEnumerable<Type> registionTypes = types.Where(p => p.IsDefined(typeof(RegisterAttribute), false));
+            types.Where(p => p.IsDefined(typeof(RegisterAttribute), false)).ForEach(implementerType =>
+            {
+                var lifecycle = GetLifecycle(implementerType);
 
-            foreach (Type type in registionTypes) {
-                Lifecycle lifecycle = LifecycleAttribute.GetLifecycle(type);
-
-                var attribute = type.GetSingleAttribute<RegisterAttribute>(false);
-                if (attribute != null) {
-                    Type contractType = attribute.ServiceType;
-                    string contractName = attribute.Name;
-                    if (contractType == null) {
-                        this.SetDefault(type, contractName, lifecycle);
-                    }
-                    else {
-                        this.SetDefault(contractType, type, contractName, lifecycle);
-                    }
-                }
-            }
+                var attribute = implementerType.GetSingleAttribute<RegisterAttribute>(false);
+                if (attribute.ContactType == null)
+                    _container.RegisterType(implementerType, attribute.ContactName, lifecycle);
+                else _container.RegisterType(attribute.ContactType, implementerType, attribute.ContactName, lifecycle);
+            });
         }
 
 
         private void RegisterDefaultComponents()
         {
-            this.SetDefault(DefaultTextSerializer.Instance);
-            this.SetDefault<IEventStore, EventStoreInMemory>();
-            this.SetDefault<IEventPublishedVersionStore, EventPublishedVersionInMemory>();
-            this.SetDefault<ISnapshotStore, NoneSnapshotStore>();
-            this.SetDefault<ICache, LocalCache>();
-            this.SetDefault<IRepository, MemoryRepository>();
-            this.SetDefault<IMessageBus<IResult>, MessageProducer<IResult>>();
-            this.SetDefault<IMessageReceiver<Envelope<IResult>>, MessageProducer<IResult>>();
-            this.SetDefault<IResultManager, ResultManager>();
+            _container.RegisterInstance(TextSerializer.Instance);
+            _container.RegisterType<IEventStore, EventStoreInMemory>();
+            _container.RegisterType<IEventPublishedVersionStore, EventPublishedVersionInMemory>();
+            _container.RegisterType<ISnapshotStore, NoneSnapshotStore>();
+            _container.RegisterType<ICacheProvider, HashtableCacheProvider>();
+            _container.RegisterType<IRepository, Repository>();
+            _container.RegisterType<IResultManager, ResultManager>();
         }
 
-        private void RegisterHandlerAndFetcher(IEnumerable<Type> types)
+        private static bool IsHandlerInterface(Type interfaceType)
         {
-            foreach (Type type in types) {
-                Lifecycle lifecycle = LifecycleAttribute.GetLifecycle(type);
+            if (!interfaceType.IsGenericType) return false;
 
-                Type[] interfaceTypes = type.GetInterfaces();
-                foreach (Type interfaceType in interfaceTypes.Where(FilterType)) {
-                    this.SetDefault(interfaceType, type, type.FullName, lifecycle);
-                }
-            }
+            var genericType = interfaceType.GetGenericTypeDefinition();
 
-            InnerHandlerProvider.Instance.Initialize(types);
+            return genericType == typeof(ICommandHandler<>) || genericType == typeof(IEventHandler<>) ||
+                   genericType == typeof(IMessageHandler<>) || genericType == typeof(IEnvelopedMessageHandler<>) ||
+                   genericType == typeof(IQueryHandler<,>);
         }
 
-        #endregion
-
-
-        private class Component
+        private void RegisterHandler(IEnumerable<Type> types)
         {
-            #region Constructors and Destructors
-
-            public Component(Type type, string name, object instance)
+            types.Where(typeof(IHandler).IsAssignableFrom).ForEach(handlerType =>
             {
-                this.ContractKey = new TypeRegistration(type, name);
-                this.Instance = instance;
-                this.Lifecycle = Lifecycle.Singleton;
-            }
-
-            public Component(Type type, string name, Lifecycle lifecycle)
-                : this(type, type, name, lifecycle)
-            {
-            }
-
-            public Component(Type from, Type to, string name, Lifecycle lifecycle)
-            {
-                this.ContractKey = new TypeRegistration(from, name);
-                this.ImplementationType = to;
-                this.Lifecycle = lifecycle;
-            }
-
-            #endregion
-
-            #region Public Properties
-
-            /// <summary>
-            ///     要注册的类型
-            /// </summary>
-            public TypeRegistration ContractKey { get; set; }
-
-            /// <summary>
-            ///     要注册类型的实现类型
-            /// </summary>
-            public Type ImplementationType { get; set; }
-
-            /// <summary>
-            ///     要注册类型的实例
-            /// </summary>
-            public object Instance { get; private set; }
-
-            /// <summary>
-            ///     生命周期
-            /// </summary>
-            public Lifecycle Lifecycle { get; private set; }
-
-            #endregion
-
-            #region Methods and Operators
-
-            /// <summary>
-            /// 返回一个值，该值指示此实例是否与指定的对象相等。
-            /// </summary>
-            public override bool Equals(object obj)
-            {
-                var other = obj as Component;
-
-                if (other == null) {
-                    return false;
-                }
-
-                if (ReferenceEquals(this, other)) {
-                    return true;
-                }
-
-                return this.ContractKey.Equals(other.ContractKey);
-            }
-
-            /// <summary>
-            /// 返回此实例的哈希代码。
-            /// </summary>
-            public override int GetHashCode()
-            {
-                return this.ContractKey.GetHashCode();
-            }
-
-            public override string ToString()
-            {
-                return this.ContractKey.ToString();
-            }
-
-            internal object GetInstance(IObjectContainer container)
-            {
-                if (this.Instance != null) {
-                    return this.Instance;
-                }
-
-                return container.Resolve(this.ContractKey);
-            }
-
-            internal bool MustbeInitialize()
-            {
-                return this.Lifecycle == Lifecycle.Singleton
-                       && (IsInitializeType(this.ImplementationType) || (this.Instance is IInitializer));
-            }
-
-            internal void Register(IObjectContainer container)
-            {
-                if (container.IsRegistered(this.ContractKey)) {
+                if (handlerType == typeof(ResultNotifyHandler) || handlerType == typeof(ResultReplyHandler))
                     return;
-                }
 
-                if (this.Instance != null) {
-                    container.RegisterInstance(this.ContractKey, this.Instance);
-                    return;
-                }
+                handlerType.GetInterfaces().Where(IsHandlerInterface).ForEach(contractType =>
+                {
+                    _container.RegisterType(contractType, handlerType, handlerType.FullName);
+                });
+            });
 
-                container.RegisterType(this.ContractKey, this.ImplementationType, this.Lifecycle);
-            }
-
-            private static bool IsInitializeType(Type type)
-            {
-                return type != null && type.IsClass && !type.IsAbstract && typeof(IInitializer).IsAssignableFrom(type);
-            }
-
-            #endregion
+            AggregateInnerHandlerProvider.Current.Initialize(types);
         }
-    }
-
-    /// <summary>
-    ///     <see cref="Configuration" /> 的扩展类
-    /// </summary>
-    public static class ConfigurationExtentions
-    {
-        #region Public Methods and Operators
-
-        /// <summary>
-        /// 注册类型
-        /// </summary>
-        public static Configuration SetDefault(
-            this Configuration that,
-            Type type,
-            Lifecycle lifecycle = Lifecycle.Singleton)
-        {
-            return that.SetDefault(type, null, lifecycle);
-        }
-
-        /// <summary>
-        /// 注册类型
-        /// </summary>
-        public static Configuration SetDefault(
-            this Configuration that,
-            Type from,
-            Type to,
-            Lifecycle lifecycle = Lifecycle.Singleton)
-        {
-            return that.SetDefault(from, to, null, lifecycle);
-        }
-
-        /// <summary>
-        /// 注册类型
-        /// </summary>
-        public static Configuration SetDefault<T>(this Configuration that, T instance, string name = null)
-        {
-            return that.SetDefault(typeof(T), instance, name);
-        }
-
-        /// <summary>
-        /// 注册类型
-        /// </summary>
-        public static Configuration SetDefault<T>(this Configuration that, Lifecycle lifecycle = Lifecycle.Singleton)
-        {
-            return that.SetDefault<T>((string)null, lifecycle);
-        }
-
-        /// <summary>
-        /// 注册类型
-        /// </summary>
-        public static Configuration SetDefault<T>(
-            this Configuration that,
-            string name,
-            Lifecycle lifecycle = Lifecycle.Singleton)
-        {
-            return that.SetDefault(typeof(T), name, lifecycle);
-        }
-
-        /// <summary>
-        /// 注册类型
-        /// </summary>
-        public static Configuration SetDefault<TFrom, TTo>(
-            this Configuration that,
-            Lifecycle lifecycle = Lifecycle.Singleton) where TTo : TFrom
-        {
-            return that.SetDefault<TFrom, TTo>((string)null, lifecycle);
-        }
-
-        /// <summary>
-        /// 注册类型
-        /// </summary>
-        public static Configuration SetDefault<TFrom, TTo>(
-            this Configuration that,
-            string name,
-            Lifecycle lifecycle = Lifecycle.Singleton) where TTo : TFrom
-        {
-            return that.SetDefault(typeof(TFrom), typeof(TTo), name, lifecycle);
-        }
-
-        #endregion
-
-        /// <summary>
-        /// 加载程序集，如果为空就扫描目录
-        /// </summary>
-        public static Configuration LoadAssemblies(this Configuration that, params string[] assemblyNames)
-        {
-            Assembly[] assemblies = new Assembly[0];
-
-            if (assemblyNames == null || assemblyNames.Length > 0) {
-                assemblies = assemblyNames.Select(Assembly.Load).ToArray();
-            }
-            else {
-                string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-                string relativeSearchPath = AppDomain.CurrentDomain.RelativeSearchPath;
-                string binPath = string.IsNullOrEmpty(relativeSearchPath)
-                                     ? baseDir
-                                     : Path.Combine(baseDir, relativeSearchPath);
-
-                assemblies = Directory.GetFiles(binPath).Where(
-                    file => {
-                        string ext = Path.GetExtension(file).ToLower();
-                        return ext.EndsWith(".dll") || ext.EndsWith(".exe");
-                    }).Select(Assembly.LoadFrom).ToArray();
-            }
-
-            return that.LoadAssemblies(assemblies);
-        }
-
-        public static Configuration UseLocalQueue(this Configuration that, ProcessingFlags flags = ProcessingFlags.All)
-        {
-            if (flags == ProcessingFlags.All || (flags & ProcessingFlags.Command) == ProcessingFlags.Command) {
-                that.SetDefault<IMessageBus<ICommand>, MessageProducer<ICommand>>();
-                that.SetDefault<IMessageReceiver<Envelope<ICommand>>, MessageProducer<ICommand>>();
-            }
-            if (flags == ProcessingFlags.All || (flags & ProcessingFlags.Event) == ProcessingFlags.Event) {
-                that.SetDefault<IMessageBus<IEvent>, MessageProducer<IEvent>>();
-                that.SetDefault<IMessageReceiver<Envelope<IEvent>>, MessageProducer<IEvent>>();
-            }
-            if (flags == ProcessingFlags.All || (flags & ProcessingFlags.PublishableException) == ProcessingFlags.PublishableException) {
-                that.SetDefault<IMessageBus<IPublishableException>, MessageProducer<IPublishableException>>();
-                that.SetDefault<IMessageReceiver<Envelope<IPublishableException>>, MessageProducer<IPublishableException>>();
-            }
-            if(flags == ProcessingFlags.All || (flags & ProcessingFlags.Query) == ProcessingFlags.Query) {
-                that.SetDefault<IMessageBus<IQuery>, MessageProducer<IQuery>>();
-                that.SetDefault<IMessageReceiver<Envelope<IQuery>>, MessageProducer<IQuery>>();
-            }
-
-
-            return that.EnableProcessors(flags);
-        }
-
-        public static Configuration EnableProcessors(this Configuration that, 
-            ProcessingFlags processingFlags = ProcessingFlags.All, 
-            ConnectionMode connectionMode = ConnectionMode.Local)
-        {
-            if(processingFlags == ProcessingFlags.All || (processingFlags & ProcessingFlags.Command) == ProcessingFlags.Command) {
-                that.SetDefault<IProcessor, CommandConsumer>("command");
-            }
-            if(processingFlags == ProcessingFlags.All || (processingFlags & ProcessingFlags.Event) == ProcessingFlags.Event) {
-                that.SetDefault<IProcessor, EventConsumer>("event");
-            }
-            if(processingFlags == ProcessingFlags.All || (processingFlags & ProcessingFlags.PublishableException) == ProcessingFlags.PublishableException) {
-                that.SetDefault<IProcessor, PublishableExceptionConsumer>("exception");
-            }
-            if(processingFlags == ProcessingFlags.All || (processingFlags & ProcessingFlags.Query) == ProcessingFlags.Query) {
-                that.SetDefault<IProcessor, QueryConsumer>("query");
-            }
-
-            switch(connectionMode) {
-                case ConnectionMode.Wcf:
-                    that.SetDefault<IProcessor, ResultConsumerWithWcf>("result");
-                    break;
-                case ConnectionMode.Socket:
-                    that.SetDefault<IProcessor, ResultConsumerWithSocket>("result");
-                    break;
-            }
-
-            return that;
-        }
-
-        public static Configuration EnableService(this Configuration that, ConnectionMode connectionMode = ConnectionMode.Local)
-        {
-            that.SetDefault<IProcessor, ResultConsumerWithLocal>("result");
-
-            switch (connectionMode)
-            {
-                case ConnectionMode.Local:
-                    that.UseLocalQueue();
-                    that.SetDefault<ICommandService, CentralService>();
-                    that.SetDefault<IQueryService, CentralService>();
-                    break;
-                case ConnectionMode.Wcf:
-                    that.SetDefault<IProcessor, WcfRequestServer>("requestService");
-                    that.SetDefault<IProcessor, WcfReplyServer>("replyService");
-                    break;
-                case ConnectionMode.Socket:
-                    that.SetDefault<IProcessor, SocketRequestServer>("requestService");
-                    that.SetDefault<IProcessor, SocketReplyServer>("replyService");
-                    break;
-            }
-
-            return that;
-        }        
     }
 }

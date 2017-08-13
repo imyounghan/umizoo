@@ -1,26 +1,28 @@
-﻿
+﻿// Copyright © 2015 ~ 2017 Sunsoft Studio, All rights reserved.
+// Umizoo is a framework can help you develop DDD and CQRS style applications.
+// 
+// Created by young.han with Visual Studio 2017 on 2017-08-09.
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Umizoo.Infrastructure.Composition;
+using Umizoo.Configurations;
+using Umizoo.Infrastructure;
 
 namespace Umizoo.Messaging.Handling
 {
-    using System.Collections.Generic;
-    using System.Reflection;
-
-    using Umizoo.Configurations;
-    using Umizoo.Infrastructure.Composition;
-
-    public class PublishableExceptionConsumer : MessageConsumer<IPublishableException>
+    public class PublishableExceptionConsumer : MessageConsumer<IPublishableException>, IInitializer
     {
-        public PublishableExceptionConsumer(IMessageReceiver<Envelope<IPublishableException>> eventReceiver)
-            : base(eventReceiver)
+        public PublishableExceptionConsumer(IMessageReceiver<Envelope<IPublishableException>> exceptionReceiver)
+            : base(exceptionReceiver, ProcessingFlags.PublishableException)
         {
         }
 
-        public override void Initialize(IObjectContainer container, IEnumerable<Assembly> assemblies)
+        public void Initialize(IObjectContainer container, IEnumerable<Type> types)
         {
-            foreach(var exceptionType in Configuration.Current.PublishableExceptionTypes.Values)
-            {
-                this.Initialize(container, exceptionType);
-            }
+            types.Where(type => type.IsClass && !type.IsAbstract && typeof(IPublishableException).IsAssignableFrom(type))
+                .ForEach(exceptionType => Initialize(container, exceptionType));
         }
     }
 }

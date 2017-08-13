@@ -1,111 +1,81 @@
-﻿
+﻿// Copyright © 2015 ~ 2017 Sunsoft Studio, All rights reserved.
+// Umizoo is a framework can help you develop DDD and CQRS style applications.
+// 
+// Created by young.han with Visual Studio 2017 on 2017-08-06.
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 
 namespace Umizoo.Infrastructure.Composition
 {
-    using System;
-    using System.Collections.Generic;
-    using System.Linq;
-    using System.Reflection;
-
-    /// <summary>
-    /// The default object container.
-    /// </summary>
     public sealed class DefaultObjectContainer : ObjectContainer
     {
-        #region Fields
+        private readonly Dictionary<Type, ObjectBuilder> _typeBuilderMap;
+        private readonly Dictionary<TypeRegistration, Type> _typeImplementerMap;
+        private readonly Dictionary<TypeRegistration, object> _typeInstanceMap;
+        private readonly Dictionary<Type, ICollection<TypeRegistration>> _typeRegistrationMap;
 
-        private readonly Dictionary<TypeRegistration, object> instances;
-        private readonly Dictionary<TypeRegistration, Type> keyToImpltypeMap;
-        private readonly Dictionary<Type, ObjectBuilder> objectBuilders;
-        private readonly Dictionary<Type, ICollection<TypeRegistration>> typeToAllMap;
-
-        #endregion
-
-        #region Constructors and Destructors
 
         public DefaultObjectContainer()
+            : this(null)
         {
-            this.instances = new Dictionary<TypeRegistration, object>();
-            this.objectBuilders = new Dictionary<Type, ObjectBuilder>();
-            this.keyToImpltypeMap = new Dictionary<TypeRegistration, Type>();
-            this.typeToAllMap = new Dictionary<Type, ICollection<TypeRegistration>>();
         }
 
-        #endregion
+        private DefaultObjectContainer(IObjectContainer container)
+            : base(container)
+        {
+            _typeInstanceMap = new Dictionary<TypeRegistration, object>();
+            _typeBuilderMap = new Dictionary<Type, ObjectBuilder>();
+            _typeImplementerMap = new Dictionary<TypeRegistration, Type>();
+            _typeRegistrationMap = new Dictionary<Type, ICollection<TypeRegistration>>();
+        }
 
-        #region Public Methods and Operators
+
+        public override IObjectContainer CreateChildContainer()
+        {
+            return new DefaultObjectContainer(this);
+        }
 
         public override bool IsRegistered(Type type, string name)
         {
             return false;
         }
 
-        public override bool IsRegistered(TypeRegistration key)
-        {
-            return this.RegisteredTypes.Contains(key);
-        }
-
-        public override void RegisterInstance(Type type, string name, object instance)
+        public override void RegisterInstance(Type type, object instance, string name)
         {
             var typeRegistration = new TypeRegistration(type, name);
-            this.RegisterInstance(typeRegistration, instance);
+            if (_typeInstanceMap.TryAdd(typeRegistration, instance))
+                _typeRegistrationMap.GetOrAdd(type, () => new List<TypeRegistration>()).Add(typeRegistration);
         }
 
-        public override void RegisterInstance(TypeRegistration typeRegistration, object instance)
+        public override void RegisterType(Type from, Type to, string name, Lifecycle lifetime)
         {
-            if (this.instances.TryAdd(typeRegistration, instance))
+            var typeRegistration = new TypeRegistration(from, name);
+            if (_typeImplementerMap.TryAdd(typeRegistration, to))
             {
-                this.typeToAllMap.GetOrAdd(typeRegistration.Type, () => new List<TypeRegistration>())
-                    .Add(typeRegistration);
-            }
-        }
-
-        public override void RegisterType(Type type, string name, Lifecycle lifetime)
-        {
-            var typeRegistration = new TypeRegistration(type, name);
-            this.RegisterType(typeRegistration, lifetime);
-        }
-
-        public override void RegisterType(TypeRegistration key, Lifecycle lifetime)
-        {
-            this.RegisterType(key, key.Type, lifetime);
-        }
-
-        public override void RegisterType(Type @from, Type to, string name, Lifecycle lifetime)
-        {
-            var typeRegistration = new TypeRegistration(@from, name);
-            this.RegisterType(typeRegistration, to, lifetime);
-        }
-
-        public override void RegisterType(TypeRegistration key, Type implType, Lifecycle lifetime)
-        {
-            if (this.keyToImpltypeMap.TryAdd(key, implType))
-            {
-                this.typeToAllMap.GetOrAdd(key.Type, () => new List<TypeRegistration>()).Add(key);
-                this.objectBuilders.TryAdd(implType, new ObjectBuilder(implType, lifetime));
+                _typeRegistrationMap.GetOrAdd(from, () => new List<TypeRegistration>()).Add(typeRegistration);
+                _typeBuilderMap.TryAdd(to, new ObjectBuilder(to, lifetime, this));
             }
         }
 
         public override object Resolve(Type type, string name)
         {
-            var key = new TypeRegistration(type, name);
-
-            return this.Resolve(key);
+            return Resolve(new TypeRegistration(type, name));
         }
 
-        public override object Resolve(TypeRegistration typeRegistration)
+        private object Resolve(TypeRegistration typeRegistration)
         {
             object instance = null;
-            if (!this.instances.TryGetValue(typeRegistration, out instance))
+            if (!_typeInstanceMap.TryGetValue(typeRegistration, out instance))
             {
-                Type implType;
-                if (this.keyToImpltypeMap.TryGetValue(typeRegistration, out implType))
+                Type implementerType;
+                if (_typeImplementerMap.TryGetValue(typeRegistration, out implementerType))
                 {
                     ObjectBuilder objectBuilder;
-                    if (this.objectBuilders.TryGetValue(implType, out objectBuilder))
-                    {
+                    if (_typeBuilderMap.TryGetValue(implementerType, out objectBuilder))
                         instance = objectBuilder.GetInstance();
-                    }
                 }
             }
 
@@ -114,95 +84,81 @@ namespace Umizoo.Infrastructure.Composition
 
         public override IEnumerable<object> ResolveAll(Type type)
         {
-            if (!this.typeToAllMap.ContainsKey(type))
-            {
+            if (!_typeRegistrationMap.ContainsKey(type))
                 return Enumerable.Empty<object>();
-            }
 
-            return this.typeToAllMap[type].Select(this.Resolve).Distinct().ToArray();
+            return _typeRegistrationMap[type].Select(Resolve).Distinct().ToArray();
         }
 
         protected override void Dispose(bool disposing)
         {
+            _typeInstanceMap.Clear();
+            _typeBuilderMap.Clear();
+            _typeImplementerMap.Clear();
+            _typeRegistrationMap.Clear();
         }
 
-        #endregion
 
-        class ObjectBuilder
+        private class ObjectBuilder
         {
-            #region Fields
+            private readonly ConstructorInfo _constructorInfo;
+            private readonly Lifecycle _lifecycle;
+            private readonly IObjectContainer _container;
+            private object _instance;
 
-            private readonly ConstructorInfo constructorInfo;
-            private readonly Lifecycle lifecycle;
-            private object instance;
 
-            #endregion
-
-            #region Constructors and Destructors
-
-            public ObjectBuilder(Type type, Lifecycle lifecycle)
+            public ObjectBuilder(Type type, Lifecycle lifecycle, IObjectContainer container)
             {
-                ConstructorInfo[] constructors = type.GetConstructors();
+                var constructors = type.GetConstructors();
                 if (constructors.Length == 0)
                 {
-                    string errorMessage = string.Format("Type '{0}' must have a public constructor.", type.FullName);
+                    var errorMessage = string.Format("Type '{0}' must have a public constructor.", type.FullName);
                     throw new SystemException(errorMessage);
                 }
 
                 if (constructors.Length > 1)
                 {
-                    string errorMessage = string.Format(
-                        "Type '{0}' must have multiple public constructor.", 
+                    var errorMessage = string.Format(
+                        "Type '{0}' must have multiple public constructor.",
                         type.FullName);
                     throw new SystemException(errorMessage);
                 }
 
-                this.constructorInfo = constructors.First();
-                this.lifecycle = lifecycle;
+                _constructorInfo = constructors.First();
+                _lifecycle = lifecycle;
+                _container = container;
             }
-
-            #endregion
-
-            #region Methods and Operators
 
             public object GetInstance()
             {
-                if (this.lifecycle == Lifecycle.Singleton)
+                if (_lifecycle == Lifecycle.Singleton)
                 {
-                    if (this.instance == null)
-                    {
-                        this.instance = this.CreateInstance();
-                    }
+                    if (_instance == null)
+                        _instance = CreateInstance();
 
-                    return this.instance;
+                    return _instance;
                 }
 
-                return this.instance;
+                return _instance;
             }
 
             private object CreateInstance()
             {
-                ParameterInfo[] parameters = this.constructorInfo.GetParameters();
+                var parameters = _constructorInfo.GetParameters();
                 if (parameters.Length == 0)
-                {
-                    return this.constructorInfo.Invoke(new object[0]);
-                }
+                    return _constructorInfo.Invoke(new object[0]);
 
-                object[] args = parameters.Select(this.GetParameterValue).ToArray();
-                return this.constructorInfo.Invoke(args);
+                var args = parameters.Select(GetParameterValue).ToArray();
+                return _constructorInfo.Invoke(args);
             }
 
             private object GetParameterValue(ParameterInfo parameterInfo)
             {
                 if (parameterInfo.RawDefaultValue == DBNull.Value)
-                {
-                    return Instance.Resolve(parameterInfo.ParameterType);
-                }
+                    return _container.Resolve(parameterInfo.ParameterType);
 
                 return parameterInfo.RawDefaultValue;
             }
-
-            #endregion
         }
     }
 }

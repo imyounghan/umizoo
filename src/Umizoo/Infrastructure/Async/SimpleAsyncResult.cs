@@ -1,13 +1,15 @@
-﻿
+﻿// Copyright © 2015 ~ 2017 Sunsoft Studio, All rights reserved.
+// Umizoo is a framework can help you develop DDD and CQRS style applications.
+// 
+// Created by young.han with Visual Studio 2017 on 2017-08-07.
+
+using System;
+using System.Threading;
 
 namespace Umizoo.Infrastructure.Async
 {
-    using System;
-    using System.Threading;
-
-    internal sealed class SimpleAsyncResult : IAsyncResult
+    public sealed class SimpleAsyncResult : IAsyncResult
     {
-
         private readonly object _asyncState;
         private bool _completedSynchronously;
         private volatile bool _isCompleted;
@@ -60,9 +62,7 @@ namespace Umizoo.Infrastructure.Async
             _completedSynchronously = completedSynchronously;
             _isCompleted = true;
 
-            if(callback != null) {
-                callback(this);
-            }
+            callback?.Invoke(this);
         }
 
     }

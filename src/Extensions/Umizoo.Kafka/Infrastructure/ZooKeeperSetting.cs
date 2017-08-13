@@ -1,8 +1,7 @@
-﻿
+﻿using System.Configuration;
+
 namespace Umizoo.Infrastructure
 {
-    using System.Configuration;
-
     public static class ZooKeeperSetting
     {
         static ZooKeeperSetting()

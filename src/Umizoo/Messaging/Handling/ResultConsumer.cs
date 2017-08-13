@@ -1,68 +1,61 @@
-﻿using System;
+﻿// Copyright © 2015 ~ 2017 Sunsoft Studio, All rights reserved.
+// Umizoo is a framework can help you develop DDD and CQRS style applications.
+// 
+// Created by young.han with Visual Studio 2017 on 2017-08-09.
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Umizoo.Infrastructure.Composition;
+using Umizoo.Infrastructure.Logging;
+using Umizoo.Configurations;
 using Umizoo.Infrastructure;
 
 namespace Umizoo.Messaging.Handling
 {
-    public abstract class ResultConsumer : Processor
+    public class ResultConsumer : Consumer<IResult>, IInitializer
     {
-        private readonly IMessageReceiver<Envelope<IResult>> resultReceiver;
+        private readonly Dictionary<Type, IEnvelopedHandler> _resultHandlers;
 
         public ResultConsumer(IMessageReceiver<Envelope<IResult>> resultReceiver)
+            : base(resultReceiver, ProcessingFlags.Result)
         {
-            this.resultReceiver = resultReceiver;
+            _resultHandlers = new Dictionary<Type, IEnvelopedHandler>();
         }
 
-        protected abstract void OnResultReceived(object sender, Envelope<IResult> envelope);
-
-        protected override void Start()
+        public void Initialize(IObjectContainer container, IEnumerable<Type> types)
         {
-            this.resultReceiver.MessageReceived += this.OnResultReceived;
-            this.resultReceiver.Start();
-
-            LogManager.Default.InfoFormat("Result Consumer Started!");
-        }
-
-        protected override void Stop()
-        {
-            this.resultReceiver.MessageReceived -= this.OnResultReceived;
-            this.resultReceiver.Start();
-
-            LogManager.Default.InfoFormat("Result Consumer Started!");
-        }
-    }
-
-    public abstract class ReplyResultConsumer : ResultConsumer
-    {
-        public ReplyResultConsumer(IMessageReceiver<Envelope<IResult>> resultReceiver)
-            : base(resultReceiver)
-        {
-        }
-
-
-        protected abstract bool SendReply(IResult result, TraceInfo traceInfo);
-
-        protected override void OnResultReceived(object sender, Envelope<IResult> envelope)
-        {
-            var traceInfo = (TraceInfo)envelope.Items[StandardMetadata.TraceInfo];
-
-
-            bool success;
-            try {
-                success = this.SendReply(envelope.Body, traceInfo);
-            }
-            catch(Exception ex) {
-                LogManager.Default.Error(ex, 
-                    "Send reply result has exeption, result:({0}),traceId:{1},address:{2}.", 
-                    envelope.Body, traceInfo.Id, traceInfo.Address);
-                success = false;
-            }
-
-            if(!success) {
-                var resultBus = sender as IMessageBus<IResult>;
-                if(resultBus != null) {
-                    resultBus.Send(envelope);
+            types.Where(type => type.IsClass && !type.IsAbstract && typeof(IResult).IsAssignableFrom(type))
+                .ForEach(resultType =>
+            {
+                var handler = container.Resolve(typeof(IEnvelopedMessageHandler<>).MakeGenericType(resultType)) as IEnvelopedHandler;
+                if (handler == null)
+                {
+                    var errorMessage =
+                        string.Format("not found the handler of this type('{0}') with IEnvelopedMessageHandler<>.",
+                            resultType.FullName);
+                    LogManager.Default.Fatal(errorMessage);
+                    throw new SystemException(errorMessage);
                 }
-            }
+
+                _resultHandlers[resultType] = handler;
+            });
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+        }
+
+        private Envelope Create(Envelope<IResult> envelope)
+        {
+            var resultType = envelope.Body.GetType();
+
+            return (Envelope)Activator.CreateInstance(typeof(Envelope<>).MakeGenericType(resultType), envelope.Body, envelope.MessageId);
+        }
+
+        protected override void OnMessageReceived(Envelope<IResult> envelope)
+        {
+            ((dynamic)_resultHandlers[envelope.Body.GetType()]).Handle((dynamic)Create(envelope));
         }
     }
 }
