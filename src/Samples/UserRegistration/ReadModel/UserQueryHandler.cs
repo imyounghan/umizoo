@@ -47,7 +47,7 @@ namespace UserRegistration.ReadModel
                 return false;
 
             var userSigned = new UserSigned(parameter.LoginId, parameter.IpAddress);
-            bus.Send(userSigned);
+            bus.Publish(userSigned);
 
             return true;
         }
