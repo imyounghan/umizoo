@@ -6,10 +6,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
+using Umizoo.Configurations;
 using Umizoo.Infrastructure.Composition;
 using Umizoo.Infrastructure.Logging;
-using Umizoo.Configurations;
 
 namespace Umizoo.Messaging.Handling
 {
@@ -19,8 +18,8 @@ namespace Umizoo.Messaging.Handling
     /// <typeparam name="TMessage">消息类型</typeparam>
     public abstract class MessageConsumer<TMessage> : Consumer<TMessage> where TMessage : IMessage
     {
-        private readonly Dictionary<Type, ICollection<IHandler>> _envelopeHandlers;
-        private readonly Dictionary<Type, ICollection<IHandler>> _handlers;
+        private readonly Dictionary<Type, ICollection<HandlerDescriptor>> _envelopeHandlerDescriptors;
+        private readonly Dictionary<Type, ICollection<HandlerDescriptor>> _handlerDescriptors;
         private readonly CheckHandlerMode _checkHandlerMode;
 
         /// <summary>
@@ -38,8 +37,8 @@ namespace Umizoo.Messaging.Handling
             ProcessingFlags processingFlag)
             : base(receiver, processingFlag)
         {
-            _handlers = new Dictionary<Type, ICollection<IHandler>>();
-            _envelopeHandlers = new Dictionary<Type, ICollection<IHandler>>();
+            _handlerDescriptors = new Dictionary<Type, ICollection<HandlerDescriptor>>();
+            _envelopeHandlerDescriptors = new Dictionary<Type, ICollection<HandlerDescriptor>>();
             _checkHandlerMode = checkHandlerMode;
         }
 
@@ -51,14 +50,14 @@ namespace Umizoo.Messaging.Handling
         /// <summary>
         ///     获取类型的处理器集合
         /// </summary>
-        protected IEnumerable<IHandler> GetHandlers(Type messageType)
+        protected virtual IEnumerable<HandlerDescriptor> GetHandlerDescriptors(Type messageType)
         {
-            var combinedHandlers = new List<IHandler>();
-            if (_handlers.ContainsKey(messageType)) combinedHandlers.AddRange(_handlers[messageType]);
+            var combinedHandlerDescriptors = new List<HandlerDescriptor>();
+            if (_handlerDescriptors.ContainsKey(messageType)) combinedHandlerDescriptors.AddRange(_handlerDescriptors[messageType]);
 
-            if (_envelopeHandlers.ContainsKey(messageType)) combinedHandlers.AddRange(_envelopeHandlers[messageType]);
+            if (_envelopeHandlerDescriptors.ContainsKey(messageType)) combinedHandlerDescriptors.AddRange(_envelopeHandlerDescriptors[messageType]);
 
-            return combinedHandlers;
+            return combinedHandlerDescriptors;
         }
 
         /// <summary>
@@ -66,18 +65,14 @@ namespace Umizoo.Messaging.Handling
         /// </summary>
         protected void Initialize(IObjectContainer container, Type messageType)
         {
-            var envelopedEventHandlers =
-                container.ResolveAll(typeof(IEnvelopedMessageHandler<>).MakeGenericType(messageType))
-                    .OfType<IEnvelopedHandler>()
-                    .Cast<IHandler>()
-                    .ToList();
-            if (envelopedEventHandlers.Count > 0)
-            {
-                _envelopeHandlers[messageType] = envelopedEventHandlers;
+            var contractType = typeof(IEnvelopedMessageHandler<>).MakeGenericType(messageType);
+            var handlers = container.ResolveAll(contractType).ToArray();
+            if (handlers.Length > 0) {
+                _envelopeHandlerDescriptors[messageType] = handlers.Select(handler =>
+                    new HandlerDescriptor(handler, handlerType => handlerType.GetMethod("Handle", new[] { typeof(Envelope<>).MakeGenericType(messageType) }), HandlerStyle.Senior)).ToArray();
 
-                if (_checkHandlerMode == CheckHandlerMode.OnlyOne)
-                {
-                    if (envelopedEventHandlers.Count > 1)
+                if (_checkHandlerMode == CheckHandlerMode.OnlyOne) {
+                    if (handlers.Length > 1)
                         throw new SystemException(
                             string.Format(
                                 "Found more than one handler for this type('{0}') with IEnvelopedMessageHandler<>.",
@@ -87,12 +82,10 @@ namespace Umizoo.Messaging.Handling
                 }
             }
 
-            var handlers =
-                container.ResolveAll(typeof(IMessageHandler<>).MakeGenericType(messageType)).OfType<IHandler>()
-                    .ToList();
+            contractType = typeof(IMessageHandler<>).MakeGenericType(messageType);
+            handlers = container.ResolveAll(contractType).ToArray();
             if (_checkHandlerMode == CheckHandlerMode.OnlyOne)
-                switch (handlers.Count)
-                {
+                switch (handlers.Length) {
                     case 0:
                         throw new SystemException(
                             string.Format("The handler of this type('{0}') is not found.", messageType.FullName));
@@ -105,14 +98,14 @@ namespace Umizoo.Messaging.Handling
                                 messageType.FullName));
                 }
 
-            if (handlers.Count > 0) _handlers[messageType] = handlers;
+            if (handlers.Length > 0) _handlerDescriptors[messageType] = handlers.Select(handler =>
+                    new HandlerDescriptor(handler, handlerType => handlerType.GetMethod("Handle", new[] { messageType }), HandlerStyle.Simple)).ToArray();
         }
 
-        protected Envelope Convert(Envelope<TMessage> envelope)
-        {
-            var resultType = envelope.Body.GetType();
 
-            return (Envelope)Activator.CreateInstance(typeof(Envelope<>).MakeGenericType(resultType), envelope.Body, envelope.MessageId);
+        protected object Convert(Type messageType, Envelope<TMessage> envelope)
+        {
+            return Activator.CreateInstance(typeof(Envelope<>).MakeGenericType(messageType), envelope.Body, envelope.MessageId, envelope.Items);
         }
 
         /// <summary>
@@ -122,78 +115,30 @@ namespace Umizoo.Messaging.Handling
         {
             var messageType = envelope.Body.GetType();
 
-            var combinedHandlers = GetHandlers(messageType);
+            var combinedHandlerDescriptors = GetHandlerDescriptors(messageType);
 
-            if (combinedHandlers.IsEmpty())
+            if (combinedHandlerDescriptors.IsEmpty())
             {
                 LogManager.Default.WarnFormat("There is no handler of type('{0}').", messageType.FullName);
 
                 return;
             }
 
-            foreach (var handler in combinedHandlers)
-                if (handler is IEnvelopedHandler) TryMultipleInvoke(InvokeHandler, handler, Convert(envelope));
-                else TryMultipleInvoke(InvokeHandler, handler, envelope.Body);
+            //foreach (var handler in combinedHandlers)
+            //    if (handler is IEnvelopedHandler) TryMultipleInvoke(InvokeHandler, handler, Convert(envelope));
+            //    else TryMultipleInvoke(InvokeHandler, handler, envelope.Body);
+            foreach(var handlerDescriptor in combinedHandlerDescriptors) {
+                switch(handlerDescriptor.HandlerStyle) {
+                    case HandlerStyle.Simple:
+                        handlerDescriptor.Invode(envelope.Body);
+                        break;
+                    case HandlerStyle.Senior:
+                        handlerDescriptor.Invode(Convert(messageType, envelope));
+                        break;
+                }
+            }
         }
-
-        protected void TryMultipleInvoke<THandler, TParameter>(
-            Action<THandler, TParameter> retryAction,
-            THandler handler,
-            TParameter parameter)
-        {
-            var retryTimes = ConfigurationSettings.HandleRetrytimes;
-            var retryInterval = ConfigurationSettings.HandleRetryInterval;
-
-            var count = 0;
-            while (count++ < retryTimes)
-                try
-                {
-                    retryAction(handler, parameter);
-                    break;
-                }
-                catch (ApplicationException ex)
-                {
-                    LogManager.Default.Error(
-                        ex,
-                        "ApplicationException raised when handling '{0}' on '{1}', exit retry and throw.",
-                        parameter,
-                        handler.GetType().FullName);
-                    throw ex;
-                }
-                catch (SystemException ex)
-                {
-                    LogManager.Default.Error(
-                        ex,
-                        "SystemException raised when handling '{0}' on '{1}', exit retry and throw.",
-                        parameter,
-                        handler.GetType().FullName);
-                    throw ex;
-                }
-                catch (Exception ex)
-                {
-                    if (count == retryTimes)
-                    {
-                        LogManager.Default.Error(
-                            ex,
-                            "Exception raised when handling '{0}' on '{1}', the retry count has been reached.",
-                            parameter,
-                            handler.GetType().FullName);
-                        throw ex;
-                    }
-
-                    Thread.Sleep(retryInterval);
-                }
-
-            if (LogManager.Default.IsDebugEnabled)
-                LogManager.Default.DebugFormat("Handle '{0}' on '{1}' successfully.",
-                    parameter,
-                    handler.GetType().FullName);
-        }
-
-        protected void InvokeHandler<THandler, TParameter>(THandler handler, TParameter parameter)
-        {
-            ((dynamic)handler).Handle((dynamic)parameter);
-        }
+        
 
         /// <summary>
         ///     检查处理器的方式

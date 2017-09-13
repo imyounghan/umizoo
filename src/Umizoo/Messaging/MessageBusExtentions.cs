@@ -36,11 +36,18 @@ namespace Umizoo.Messaging
             commandBus.Send(envelopes);
         }
 
-        public static void Send(this IMessageBus<IEvent> eventBus, IEvent @event)
+        public static void Publish(this IMessageBus<IEvent> eventBus, IEvent @event)
         {
             var envelope = new Envelope<IEvent>(@event, ObjectId.GenerateNewId().ToString());
 
             eventBus.Send(envelope);
+        }
+
+        public static void Publish(this IMessageBus<IEvent> eventBus, IEnumerable<IEvent> events)
+        {
+            var envelopes = events.Select(@event => new Envelope<IEvent>(@event, ObjectId.GenerateNewId().ToString())).ToArray();
+
+            eventBus.Send(envelopes);
         }
 
 

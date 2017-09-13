@@ -3,7 +3,6 @@
 // 
 // Created by young.han with Visual Studio 2017 on 2017-08-09.
 
-using System;
 using System.Collections.Generic;
 
 namespace Umizoo.Messaging.Handling
@@ -13,8 +12,6 @@ namespace Umizoo.Messaging.Handling
         private readonly IMessageBus<ICommand> _commandBus;
         private readonly IMessageBus<IResult> _resultBus;
         private readonly List<ICommand> _commands;
-
-        private bool _replied;
 
 
         public EventContext(IMessageBus<ICommand> commandBus, IMessageBus<IResult> resultBus)
@@ -35,34 +32,41 @@ namespace Umizoo.Messaging.Handling
             _commands.Add(command);
         }
 
-        public void CompleteCommand(object result, Func<object, string> serializer)
-        {
-            if (_replied) return;
+        //public void CompleteCommand(object result, Func<object, string> serializer)
+        //{
+        //    if (_replied) return;
 
 
-            var commandResult = CommandResult.Finished;
-            if (!result.IsNull())
-                if (!serializer.IsNull())
-                    commandResult = new CommandResult
-                    {
-                        Result = serializer(result),
-                        ResultType = result.GetType().GetFriendlyTypeName(),
-                        ReplyType = CommandReturnMode.Manual
-                    };
-            _resultBus.Send(commandResult, TraceInfo);
+        //    var commandResult = CommandResult.Finished;
+        //    if (!result.IsNull())
+        //        if (!serializer.IsNull())
+        //            commandResult = new CommandResult
+        //            {
+        //                Result = serializer(result),
+        //                ResultType = result.GetType().GetFriendlyTypeName(),
+        //                ReplyType = CommandReturnMode.Manual
+        //            };
+        //    _resultBus.Send(commandResult, TraceInfo);
 
-            _replied = true;
-        }
+        //    _replied = true;
+        //}
 
+        private bool _committed;
         public void Commit()
         {
-            if (!_commands.IsEmpty())
-            {
-                _commandBus.Send(_commands, TraceInfo);
+            if (_committed) {
                 return;
             }
 
-            if (!_replied) _resultBus.Send(CommandResult.EventHandled, TraceInfo);
+            if (!_commands.IsEmpty())
+            {
+                _commandBus.Send(_commands, TraceInfo);
+            }
+            else {
+                _resultBus.Send(CommandResult.EventHandled, TraceInfo);
+            }
+
+            _committed = true;
         }
     }
 }

@@ -19,7 +19,7 @@ namespace Umizoo.Messaging.Handling
         private readonly IMessageBus<ICommand> _commandBus;
         private readonly IMessageBus<IEvent> _eventBus;
 
-        private readonly Dictionary<Type, IEventHandler> _eventHandlers;
+        private readonly Dictionary<Type, HandlerDescriptor> _eventHandlerDescriptors;
         private readonly IEventPublishedVersionStore _publishedVersionStore;
         private readonly IMessageBus<IResult> _resultBus;
         private readonly ITextSerializer _serializer;
@@ -36,7 +36,7 @@ namespace Umizoo.Messaging.Handling
             IMessageReceiver<Envelope<IEvent>> eventReceiver)
             : base(eventReceiver, ProcessingFlags.Event)
         {
-            _eventHandlers = new Dictionary<Type, IEventHandler>();
+            _eventHandlerDescriptors = new Dictionary<Type, HandlerDescriptor>();
 
             _publishedVersionStore = publishedVersionStore;
             _resultBus = resultBus;
@@ -48,38 +48,34 @@ namespace Umizoo.Messaging.Handling
         public void Initialize(IObjectContainer container, IEnumerable<Type> types)
         {
             var versionedEventType = typeof(IVersionedEvent);
-            types.Where(type => type.IsClass && !type.IsAbstract && typeof(IEvent).IsAssignableFrom(type))
-                .ForEach(eventType =>
-                {
-                    if (versionedEventType.IsAssignableFrom(eventType))
-                    {
-                        var eventHandlers =
-                            container.ResolveAll(typeof(IEventHandler<>).MakeGenericType(eventType))
-                                .OfType<IEventHandler>()
-                                .ToList();
-                        switch (eventHandlers.Count)
-                        {
-                            case 0:
-                                break;
-                            case 1:
-                                _eventHandlers[eventType] = eventHandlers.First();
-                                break;
-                            default:
-                                throw new SystemException(string.Format(
-                                    "Found more than one handler for '{0}' with IEventHandler<>.",
-                                    eventType.FullName));
-                        }
+            BasicTypes.EventTypes.Values.ForEach(eventType => {
+                if (versionedEventType.IsAssignableFrom(eventType)) {
+                    var eventHandlers =
+                        container.ResolveAll(typeof(IEventHandler<>).MakeGenericType(eventType))
+                            .ToList();
+                    switch (eventHandlers.Count) {
+                        case 0:
+                            break;
+                        case 1:
+                            _eventHandlerDescriptors[eventType] = new HandlerDescriptor(eventHandlers[0], handlerType => handlerType.GetMethod("Handle", new[] { typeof(IEventContext), eventType }), HandlerStyle.Special);
+                            break;
+                        default:
+                            throw new SystemException(string.Format(
+                                "Found more than one handler for '{0}' with IEventHandler<>.",
+                                eventType.FullName));
                     }
+                }
 
-                    Initialize(container, eventType);
-                });
+                Initialize(container, eventType);
+            });
         }
 
 
-        private bool ProcessEvent(IEventHandler eventHandler, IVersionedEvent @event, string eventId,
+        private bool ProcessEvent(HandlerDescriptor handlerDescriptor, IVersionedEvent @event, string eventId,
             IDictionary<string, object> items)
         {
-            var sourceInfo = (SourceInfo) items[StandardMetadata.SourceInfo];
+            var sourceInfo = (SourceInfo)items[StandardMetadata.SourceInfo];
+            var traceInfo = (TraceInfo)items[StandardMetadata.TraceInfo];
 
             if (@event.Version > 1)
             {
@@ -119,13 +115,15 @@ namespace Umizoo.Messaging.Handling
                 }
             }
 
-            try
-            {
-                var envelope = new Envelope<IVersionedEvent>(@event, eventId)
-                {
-                    Items = items
-                };
-                TryMultipleInvoke(InvokeHandler, eventHandler, envelope);
+            var context = new EventContext(_commandBus, _resultBus);
+                context.SourceInfo = sourceInfo;
+                context.TraceInfo = traceInfo;
+            if (items.ContainsKey(StandardMetadata.CommandInfo))
+                context.CommandInfo = (SourceInfo)items[StandardMetadata.CommandInfo];
+
+            try {
+                handlerDescriptor.Invode(context, @event);
+                context.Commit();
             }
             catch (Exception ex)
             {
@@ -134,8 +132,8 @@ namespace Umizoo.Messaging.Handling
                     Result = _serializer.Serialize(ex.Data),
                     ReplyType = CommandReturnMode.EventHandled
                 };
-                var traceInfo = (TraceInfo) items[StandardMetadata.TraceInfo];
                 _resultBus.Send(commandResult, traceInfo);
+                return false;
             }
 
             _publishedVersionStore.AddOrUpdatePublishedVersion(sourceInfo, @event.Version);
@@ -143,26 +141,16 @@ namespace Umizoo.Messaging.Handling
             return true;
         }
 
-        private void InvokeHandler(IEventHandler eventHandler, Envelope<IVersionedEvent> envelope)
-        {
-            var context = new EventContext(_commandBus, _resultBus);
-            if (envelope.Items.ContainsKey(StandardMetadata.SourceInfo))
-                context.SourceInfo = (SourceInfo) envelope.Items[StandardMetadata.SourceInfo];
-            if (envelope.Items.ContainsKey(StandardMetadata.TraceInfo))
-                context.TraceInfo = (TraceInfo) envelope.Items[StandardMetadata.TraceInfo];
-            if (envelope.Items.ContainsKey(StandardMetadata.CommandInfo))
-                context.CommandInfo = (SourceInfo) envelope.Items[StandardMetadata.CommandInfo];
-
-            ((dynamic) eventHandler).Handle((dynamic) context, (dynamic) envelope.Body);
-            context.Commit();
-        }
 
         protected override void OnMessageReceived(Envelope<IEvent> envelope)
         {
             var eventType = envelope.Body.GetType();
-            IEventHandler handler;
-            if (_eventHandlers.TryGetValue(eventType, out handler))
-                if (!ProcessEvent(handler, (IVersionedEvent) envelope.Body, envelope.MessageId, envelope.Items)) return;
+            HandlerDescriptor handlerDescriptor;
+            if (_eventHandlerDescriptors.TryGetValue(eventType, out handlerDescriptor)) {
+                if (!ProcessEvent(handlerDescriptor, (IVersionedEvent)envelope.Body, envelope.MessageId, envelope.Items))
+                    return;
+            }
+
 
             base.OnMessageReceived(envelope);
         }

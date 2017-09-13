@@ -12,6 +12,7 @@ using Umizoo.Infrastructure.Composition;
 using Umizoo.Infrastructure;
 using Umizoo.Messaging;
 using Umizoo.Messaging.Handling;
+using Umizoo.Communication;
 
 namespace Umizoo.Configurations
 {
@@ -103,20 +104,29 @@ namespace Umizoo.Configurations
 
         public static Configuration EnableService(this Configuration that, ConnectionMode connectionMode = ConnectionMode.Local)
         {
+            that.Accept(container => {
+                container.RegisterType<IEnvelopedMessageHandler<CommandResult>, ResultNotifyHandler>();
+                container.RegisterType<IEnvelopedMessageHandler<QueryResult>, ResultNotifyHandler>();
+            });
+            
+
             switch (connectionMode) {
                 case ConnectionMode.Local:
                     that.UseLocalQueue();
                     that.Accept(container => {
-                        container.RegisterType<IEnvelopedMessageHandler<CommandResult>, ResultNotifyHandler>();
-                        container.RegisterType<IEnvelopedMessageHandler<QueryResult>, ResultNotifyHandler>();
                         container.RegisterType<ICommandService, CommandService>();
                         container.RegisterType<IQueryService, QueryService>();
                     });
                     break;
                 case ConnectionMode.Wcf:
+                    that.Accept(container => {
+                        container.RegisterType<IProcessor, WcfCommandServer>("commandService");
+                        container.RegisterType<IProcessor, WcfQueryServer>("queryService");
+                        container.RegisterType<IProcessor, WcfReplyServer>("replyService");
+                    });
                     break;
                 case ConnectionMode.Socket:
-                    break;
+                    throw new NotImplementedException();
             }
 
             return that;

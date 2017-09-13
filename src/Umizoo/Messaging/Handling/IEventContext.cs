@@ -26,8 +26,6 @@ namespace Umizoo.Messaging.Handling
         /// <summary>
         ///     添加一个命令到当前上下文
         /// </summary>
-        void AddCommand(ICommand command);
-
-        void CompleteCommand(object result = null, Func<object, string> serializer = null);
+        void AddCommand(ICommand command);        
     }
 }

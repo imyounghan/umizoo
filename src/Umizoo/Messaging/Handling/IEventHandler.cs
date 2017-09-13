@@ -6,16 +6,16 @@
 
 namespace Umizoo.Messaging.Handling
 {
-    /// <summary>
-    /// 表示继承该接口的是溯源事件处理程序
-    /// </summary>
-    public interface IEventHandler : IHandler
-    { }
+    ///// <summary>
+    ///// 表示继承该接口的是溯源事件处理程序
+    ///// </summary>
+    //public interface IEventHandler : IHandler
+    //{ }
 
     /// <summary>
     /// 表示继承该接口的是一个溯源事件处理程序
     /// </summary>
-    public interface IEventHandler<TEvent> : IEventHandler
+    public interface IEventHandler<TEvent>// : IEventHandler
         where TEvent : class, IVersionedEvent
     {
         /// <summary>

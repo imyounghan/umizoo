@@ -37,6 +37,6 @@ namespace Umizoo.Messaging.Handling
         TAggregateRoot Find<TAggregateRoot, TIdentify>(TIdentify id) where TAggregateRoot : class, IAggregateRoot;
 
 
-        void Complete(object result = null, Func<object, string> serializer = null);
+        void SetResult(HandleStatus status, string errorMessage = null, string result = null, string resultType = null);
     }
 }

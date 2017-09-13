@@ -9,26 +9,27 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Umizoo.Infrastructure.Composition;
-using Umizoo.Infrastructure.Filtering;
-using Umizoo.Infrastructure.Logging;
 using Umizoo.Configurations;
 using Umizoo.Infrastructure;
+using Umizoo.Infrastructure.Composition;
+using Umizoo.Infrastructure.Composition.Interception;
 
 namespace Umizoo.Messaging.Handling
 {
     public class QueryConsumer : Consumer<IQuery>, IInitializer
     {
-        private readonly Dictionary<Type, IHandler> _handlers;
+        private readonly Dictionary<Type, HandlerDescriptor> _handlerDescriptors;
         private readonly IMessageBus<IResult> _resultBus;
         private readonly SemaphoreSlim _semaphore;
+        private readonly HandlerPipelineManager _pipelineManager;
 
 
         public QueryConsumer(IMessageReceiver<Envelope<IQuery>> receiver,
             IMessageBus<IResult> resultBus)
             : base(receiver, ProcessingFlags.Query)
         {
-            _handlers = new Dictionary<Type, IHandler>();
+            _handlerDescriptors = new Dictionary<Type, HandlerDescriptor>();
+            _pipelineManager = new HandlerPipelineManager();
             _resultBus = resultBus;
 
             var threadCount = ConfigurationSettings.ParallelQueryThead;
@@ -38,7 +39,7 @@ namespace Umizoo.Messaging.Handling
         public void Initialize(IObjectContainer container, IEnumerable<Type> types)
         {
             var contactTypeMap = new Dictionary<Type, Type>();
-            types.Where(type => type.IsClass && !type.IsAbstract && typeof(IQueryHandler).IsAssignableFrom(type))
+            types.Where(type => type.IsClass && !type.IsAbstract)
                 .ForEach(type => {
                     type.GetInterfaces().Where(interfaceType => interfaceType.IsGenericType &&
                                    interfaceType.GetGenericTypeDefinition() == typeof(IQueryHandler<,>))
@@ -46,7 +47,7 @@ namespace Umizoo.Messaging.Handling
                             var queryType = interfaceType.GetGenericArguments().First();
                             if (contactTypeMap.ContainsKey(queryType)) {
                                 var errorMessage = string.Format(
-                                    "There are have duplicate IQueryHandler interface type for {0}.",
+                                    "There are have duplicate IQueryHandler<> interface type for {0}.",
                                     queryType.FullName);
                                 throw new SystemException(errorMessage);
                             }
@@ -55,50 +56,33 @@ namespace Umizoo.Messaging.Handling
                         });
                 });
 
-            //types.Where(type => type.IsInterface && type.IsGenericType &&
-            //                       type.GetGenericTypeDefinition() == typeof(IQueryHandler<,>))
-            //    .ForEach(contractType =>
-            //    {
-            //        var queryType = contractType.GetGenericArguments().First();
-            //        if (contactTypeMap.ContainsKey(queryType))
-            //        {
-            //            var errorMessage = string.Format(
-            //                "There are have duplicate IQueryHandler interface type for {0}.",
-            //                queryType.FullName);
-            //            throw new SystemException(errorMessage);
-            //        }
+            BasicTypes.QueryTypes.Values.ForEach(queryType => {
+                Type contactType;
+                if (!contactTypeMap.TryGetValue(queryType, out contactType)) {
+                    var errorMessage = string.Format("The query handler of this type('{0}') is not found.",
+                        queryType.FullName);
+                    throw new SystemException(errorMessage);
+                }
 
-            //        contactTypeMap[queryType] = contractType;
-            //    });
-
-            types.Where(type => type.IsClass && !type.IsAbstract && typeof(IQuery).IsAssignableFrom(type))
-                .ForEach(queryType =>
-                {
-                    Type contactType;
-                    if (!contactTypeMap.TryGetValue(queryType, out contactType))
-                    {
-                        var errorMessage = string.Format("The query handler of this type('{0}') is not found.",
+                var handlers = container.ResolveAll(contactType).ToList();
+                switch (handlers.Count) {
+                    case 0:
+                        var errorMessage = string.Format("The query handler for {0} is not found.",
+                            contactType.GetFriendlyTypeName());
+                        throw new SystemException(errorMessage);
+                    case 1:
+                        var handlerDescriptor = new HandlerDescriptor(handlers[0], handlerType => handlerType.GetMethod("Handle", new[] { queryType }), HandlerStyle.Special);
+                        _handlerDescriptors[queryType] = handlerDescriptor;
+                        var callHandlers = HandlerAttributeHelper.GetHandlersFor(handlerDescriptor.Method, container);
+                        _pipelineManager.InitializePipeline(handlerDescriptor.Method, callHandlers);
+                        break;
+                    default:
+                        errorMessage = string.Format(
+                            "Found more than one handler for '{0}' with IQueryHandler<>.",
                             queryType.FullName);
                         throw new SystemException(errorMessage);
-                    }
-
-                    var queryHandlers = container.ResolveAll(contactType).OfType<IHandler>().ToList();
-                    switch (queryHandlers.Count)
-                    {
-                        case 0:
-                            var errorMessage = string.Format("The query handler for {0} is not found.",
-                                contactType.GetFriendlyTypeName());
-                            throw new SystemException(errorMessage);
-                        case 1:
-                            _handlers[queryType] = queryHandlers[0];
-                            break;
-                        default:
-                            errorMessage = string.Format(
-                                "Found more than one handler for '{0}' with IQueryHandler.",
-                                queryType.FullName);
-                            throw new SystemException(errorMessage);
-                    }
-                });
+                }
+            });
         }
 
         protected override void Dispose(bool disposing)
@@ -107,18 +91,7 @@ namespace Umizoo.Messaging.Handling
 
         protected override void OnMessageReceived(Envelope<IQuery> envelope)
         {
-            var queryType = envelope.Body.GetType();
-
-            var traceInfo = (TraceInfo) envelope.Items[StandardMetadata.TraceInfo];
-
-            IHandler handler;
-            if (!_handlers.TryGetValue(queryType, out handler))
-            {
-                var errorMessage = string.Format("The handler of this type('{0}') is not found.", queryType.FullName);
-                if (LogManager.Default.IsDebugEnabled) LogManager.Default.Debug(errorMessage);
-                NotifyResult(traceInfo, new QueryResult(HandleStatus.Failed, errorMessage));
-                return;
-            }
+            var handlerDescriptor = _handlerDescriptors[envelope.Body.GetType()];
 
 
             if (ConfigurationSettings.ParallelQueryThead > 1)
@@ -126,58 +99,33 @@ namespace Umizoo.Messaging.Handling
                 _semaphore.Wait();
                 Task.Factory.StartNew(() =>
                 {
-                    ExecutingQuery(handler, envelope.Body, traceInfo);
+                    ExecutingQuery(handlerDescriptor, envelope);
                     _semaphore.Release();
                 });
                 return;
             }
 
-            ExecutingQuery(handler, envelope.Body, traceInfo);
+            ExecutingQuery(handlerDescriptor, envelope);
         }
 
-        private void ExecutingQuery(IHandler handler, IQuery query, TraceInfo traceInfo)
+        private void ExecutingQuery(HandlerDescriptor handlerDescriptor, Envelope<IQuery> envelope)
         {
-            if (!ConfigurationSettings.QueryFilterEnabled)
-            {
-                try
-                {
-                    var result = Execute(handler, query);
-                    NotifyResult(traceInfo, result);
-                }
-                catch (Exception ex)
-                {
-                    NotifyResult(traceInfo, ex);
-                }
+            var traceInfo = (TraceInfo)envelope.Items[StandardMetadata.TraceInfo];
 
-                return;
+            var methodInvocation = new MethodInvocation(handlerDescriptor.Target, handlerDescriptor.Method, envelope.Body);
+            methodInvocation.InvocationContext[StandardMetadata.TraceInfo] = traceInfo;
+            methodInvocation.InvocationContext[StandardMetadata.MessageId] = envelope.MessageId;
+
+            try {
+                var methodReturn = _pipelineManager.GetPipeline(handlerDescriptor.Method).Invoke(methodInvocation,
+                    delegate (IMethodInvocation input, GetNextHandlerDelegate getNext) {
+                        var result = handlerDescriptor.Invode(input.Arguments.Cast<object>().ToArray());
+                        return input.CreateMethodReturn(result);
+                    });
+                NotifyResult(traceInfo, methodReturn.Exception ?? methodReturn.ReturnValue);
             }
-
-
-            var handlerContext = new HandlerContext(query, handler);
-            handlerContext.InvocationContext[StandardMetadata.MessageId] = traceInfo.Id;
-
-            var filters = FilterProviders.Providers.GetFilters(handlerContext);
-            var filterInfo = new FilterInfo(filters);
-
-            try
-            {
-                var postContext = InvokeHandlerMethodWithFilters(
-                    handlerContext,
-                    filterInfo.ActionFilters,
-                    query);
-                if (!postContext.ExceptionHandled)
-                    NotifyResult(traceInfo, postContext.ReturnValue ?? postContext.Exception);
-                else NotifyResult(traceInfo, postContext.ReturnValue);
-            }
-            catch (Exception ex)
-            {
-                var exceptionContext = InvokeExceptionFilters(
-                    handlerContext,
-                    filterInfo.ExceptionFilters,
-                    ex);
-                if (!exceptionContext.ExceptionHandled)
-                    NotifyResult(traceInfo, exceptionContext.ReturnValue ?? exceptionContext.Exception);
-                else NotifyResult(traceInfo, exceptionContext.ReturnValue);
+            catch (Exception ex) {
+                NotifyResult(traceInfo, ex);
             }
         }
 
@@ -207,102 +155,6 @@ namespace Umizoo.Messaging.Handling
                 queryResult = new QueryResult(HandleStatus.Nothing);
             else queryResult = new QueryResult(result);
             _resultBus.Send(queryResult, traceInfo);
-        }
-
-        private static ExceptionContext InvokeExceptionFilters(
-            HandlerContext queryHandlerContext,
-            IList<IExceptionFilter> filters,
-            Exception exception)
-        {
-            var context = new ExceptionContext(queryHandlerContext, exception);
-            foreach (var filter in filters.Reverse()) filter.OnException(context);
-
-            return context;
-        }
-
-        private static ActionExecutedContext InvokeHandlerMethodFilter(
-            IActionFilter filter,
-            ActionExecutingContext preContext,
-            Func<ActionExecutedContext> continuation)
-        {
-            filter.OnActionExecuting(preContext);
-
-            if (!preContext.WillExecute)
-                return new ActionExecutedContext(preContext, true, null) {ReturnValue = preContext.ReturnValue};
-
-            var wasError = false;
-            ActionExecutedContext postContext;
-
-            try
-            {
-                postContext = continuation();
-            }
-            catch (Exception ex)
-            {
-                wasError = true;
-                postContext = new ActionExecutedContext(preContext, false, ex);
-                filter.OnActionExecuted(postContext);
-                if (!postContext.ExceptionHandled) throw;
-            }
-
-            if (!wasError) filter.OnActionExecuted(postContext);
-
-            return postContext;
-        }
-
-        private ActionExecutedContext InvokeHandlerMethodWithFilters(
-            HandlerContext handlerContext,
-            IList<IActionFilter> filters,
-            IQuery query)
-        {
-            var preContext = new ActionExecutingContext(handlerContext);
-
-            Func<ActionExecutedContext> continuation = () => new ActionExecutedContext(handlerContext, false, null)
-            {
-                ReturnValue = Execute(handlerContext.Handler, query)
-            };
-
-            var thunk = filters.Reverse().Aggregate(continuation,
-                (next, filter) => () => InvokeHandlerMethodFilter(filter, preContext, next));
-            return thunk();
-        }
-
-        private object Execute(IHandler handler, IQuery query)
-        {
-            var retryTimes = ConfigurationSettings.HandleRetrytimes;
-            var retryInterval = ConfigurationSettings.HandleRetryInterval;
-
-            var count = 0;
-            object result = null;
-            while (count++ < retryTimes)
-                try
-                {
-                    result = ((dynamic) handler).Handle((dynamic) query);
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    if (count == retryTimes)
-                    {
-                        LogManager.Default.Error(
-                            ex,
-                            "Exception raised when handling '{0}({1})' on '{2}', the retry count has been reached.",
-                            query.GetType().FullName,
-                            TextSerializer.Instance.Serialize(query),
-                            handler.GetType().FullName);
-                        throw ex;
-                    }
-
-                    Thread.Sleep(retryInterval);
-                }
-
-            if (LogManager.Default.IsDebugEnabled)
-                LogManager.Default.DebugFormat("Handle '{0}({1})' on '{2}' successfully.",
-                    query.GetType().FullName,
-                    TextSerializer.Instance.Serialize(query),
-                    handler.GetType().FullName);
-
-            return result;
         }
     }
 }

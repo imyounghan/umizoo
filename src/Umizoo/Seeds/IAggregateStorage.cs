@@ -19,6 +19,6 @@ namespace Umizoo.Seeds
 
         void Save(IAggregateRoot aggregateRoot);
 
-        void Delete(IAggregateRoot aggregateRoot);
+        //void Delete(IAggregateRoot aggregateRoot);
     }
 }

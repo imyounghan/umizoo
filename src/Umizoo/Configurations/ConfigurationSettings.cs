@@ -22,6 +22,7 @@ namespace Umizoo.Configurations
             OuterAddress = ConfigurationManager.AppSettings["umizoo.service_outeraddress"].IfEmpty(() => string.Format("{0}:9999", SocketUtil.GetLocalIPV4()));
             InnerAddress = ConfigurationManager.AppSettings["umizoo.service_inneraddress"].IfEmpty(() => string.Format("{0}:9999", SocketUtil.GetLocalIPV4("192.", "10.", "127.")));
             ServiceName = ConfigurationManager.AppSettings["umizoo.service_name"].IfEmpty("Umizoo");
+            ContextType = ConfigurationManager.AppSettings["umizoo.service_name"].IfEmpty("web");
         }
 
         /// <summary>
@@ -79,5 +80,7 @@ namespace Umizoo.Configurations
         ///     服务名称
         /// </summary>
         public static string ServiceName { get; set; }
+
+        public static string ContextType { get; set; }
     }
 }

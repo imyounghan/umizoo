@@ -20,7 +20,7 @@ namespace Umizoo.Messaging.Handling
         private readonly IMessageBus<IResult> _resultBus;
         private readonly Dictionary<string, IAggregateRoot> _trackingAggregateRoots;
 
-        private bool _replied;
+        
 
         public CommandContext(IMessageBus<IResult> resultBus, IRepository repository, Envelope<ICommand> envelope)
         {
@@ -41,10 +41,6 @@ namespace Umizoo.Messaging.Handling
             get { return _envelopedCommand.Body; }
         }
 
-        public TraceInfo TraceInfo
-        {
-            get { return (TraceInfo) _envelopedCommand.Items.GetIfKeyNotFound(StandardMetadata.TraceInfo); }
-        }
 
         public string CommandId
         {
@@ -71,8 +67,7 @@ namespace Umizoo.Messaging.Handling
         public TAggregateRoot Find<TAggregateRoot, TIdentify>(TIdentify id) where TAggregateRoot : class, IAggregateRoot
         {
             var aggregateRootType = typeof(TAggregateRoot);
-            if (!aggregateRootType.IsClass || aggregateRootType.IsAbstract)
-            {
+            if (!aggregateRootType.IsClass || aggregateRootType.IsAbstract) {
                 var errorMessage = string.Format("type of '{0}' must be a non abstract class.",
                     aggregateRootType.FullName);
                 throw new ApplicationException(errorMessage);
@@ -81,8 +76,7 @@ namespace Umizoo.Messaging.Handling
             var key = string.Concat(aggregateRootType.FullName, "@", id);
 
             IAggregateRoot aggregateRoot;
-            if (!_trackingAggregateRoots.TryGetValue(key, out aggregateRoot))
-            {
+            if (!_trackingAggregateRoots.TryGetValue(key, out aggregateRoot)) {
                 aggregateRoot = _repository.Find(aggregateRootType, id);
 
                 if (!aggregateRoot.IsNull()) _trackingAggregateRoots.Add(key, aggregateRoot);
@@ -91,73 +85,60 @@ namespace Umizoo.Messaging.Handling
             return aggregateRoot as TAggregateRoot;
         }
 
-        public void Complete(object result, Func<object, string> serializer)
-        {
-            if (_replied) return;
-
-
-            var commandResult = CommandResult.Finished;
-            if (!result.IsNull())
-                if (!serializer.IsNull())
-                    commandResult = new CommandResult
-                    {
-                        Result = serializer(result),
-                        ReplyType = CommandReturnMode.Manual
-                    };
-            _resultBus.Send(commandResult, TraceInfo);
-
-            _replied = true;
-        }
-
-
+        private ICommandResult _commandResult;
+        private bool _committed;
         public void Commit()
         {
+            if (_committed) {
+                return;
+            }
+
             var dirtyAggregateRootCount = 0;
             var dirtyAggregateRoot = default(IEventSourced);
             var changedEvents = Enumerable.Empty<IVersionedEvent>();
-            foreach (var aggregateRoot in _trackingAggregateRoots.Values.OfType<IEventSourced>())
-            {
+            foreach (var aggregateRoot in _trackingAggregateRoots.Values.OfType<IEventSourced>()) {
                 changedEvents = aggregateRoot.GetChanges();
-                if (!changedEvents.IsEmpty())
-                {
+                if (!changedEvents.IsEmpty()) {
                     dirtyAggregateRootCount++;
                     dirtyAggregateRoot = aggregateRoot;
                 }
             }
-
-            CommandResult commandResult;
-            if (dirtyAggregateRootCount == 0)
-            {
+            if (dirtyAggregateRootCount == 0) {
                 LogManager.Default.ErrorFormat(
                     "not found aggregateroot to be created or modified by command. commandType:{0}, commandId:{1}",
                     Command.GetType().FullName,
                     CommandId);
 
-                commandResult = new CommandResult(HandleStatus.Nothing,
+                _commandResult = _commandResult ?? new CommandResult(HandleStatus.Nothing,
                     "not found aggregateroot to be created or modified.");
             }
-            else if (dirtyAggregateRootCount > 1)
-            {
+            else if (dirtyAggregateRootCount > 1) {
                 LogManager.Default.ErrorFormat(
                     "Detected more than one aggregate created or modified by command. commandType:{0}, commandId:{1}",
                     Command.GetType().FullName,
                     CommandId);
 
-                commandResult = new CommandResult(HandleStatus.Failed,
+                _commandResult = _commandResult ?? new CommandResult(HandleStatus.Failed,
                     "Detected more than one aggregate created or modified.");
             }
-            else
-            {
+            else {
                 _repository.Save(dirtyAggregateRoot, _envelopedCommand);
-                commandResult = new CommandResult
-                {
+                _commandResult = _commandResult ?? new CommandResult {
                     ReplyType = CommandReturnMode.CommandExecuted,
                     ProducedEventCount = changedEvents.Count()
                 };
             }
+            _resultBus.Send(_commandResult, (TraceInfo)_envelopedCommand.Items[StandardMetadata.TraceInfo]);
+            _committed = true;
+        }
 
-            if (_replied) return;
-            _resultBus.Send(commandResult, TraceInfo);
+        public void SetResult(HandleStatus status, string errorMessage = null, string result = null, string resultType = null)
+        {
+            _commandResult = new CommandResult(status, errorMessage) {
+                ReplyType = CommandReturnMode.Manual,
+                Result = result,
+                ResultType = resultType
+            };
         }
     }
 }

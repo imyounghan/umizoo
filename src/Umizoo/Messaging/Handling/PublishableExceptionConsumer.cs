@@ -21,8 +21,7 @@ namespace Umizoo.Messaging.Handling
 
         public void Initialize(IObjectContainer container, IEnumerable<Type> types)
         {
-            types.Where(type => type.IsClass && !type.IsAbstract && typeof(IPublishableException).IsAssignableFrom(type))
-                .ForEach(exceptionType => Initialize(container, exceptionType));
+            BasicTypes.PublishableExceptionTypes.Values.ForEach(exceptionType => Initialize(container, exceptionType));
         }
     }
 }

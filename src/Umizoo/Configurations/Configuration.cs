@@ -25,18 +25,6 @@ namespace Umizoo.Configurations
     {
         public const ProcessingFlags AllProcessingFlags = ProcessingFlags.Command | ProcessingFlags.Event | ProcessingFlags.PublishableException | ProcessingFlags.Result | ProcessingFlags.Query;
 
-        public static IDictionary<string, Type> CommandTypes { get; private set; }
-
-        public static IDictionary<string, Type> EventTypes { get; private set; }
-
-        public static IDictionary<string, Type> AggregateTypes { get; private set; }
-
-        public static IDictionary<string, Type> PublishableExceptionTypes { get; private set; }
-
-        public static IDictionary<string, Type> QueryTypes { get; private set; }
-
-        //public static IDictionary<string, Type> ResultTypes { get; private set; }
-
         private readonly IObjectContainer _container;
         private List<Assembly> _assemblies;
         private Stopwatch _stopwatch;
@@ -84,15 +72,15 @@ namespace Umizoo.Configurations
             var allTypes = _assemblies.SelectMany(assembly => assembly.GetTypes()).ToArray();
             var nonAbstractTypes = allTypes.Where(type => type.IsClass && !type.IsAbstract).ToArray();
 
-            CommandTypes = nonAbstractTypes.Where(typeof(ICommand).IsAssignableFrom)
+            BasicTypes.CommandTypes = nonAbstractTypes.Where(typeof(ICommand).IsAssignableFrom)
                 .ToDictionary(type => type.Name, type => type);
-            EventTypes = nonAbstractTypes.Where(typeof(IEvent).IsAssignableFrom)
+            BasicTypes.EventTypes = nonAbstractTypes.Where(typeof(IEvent).IsAssignableFrom)
                 .ToDictionary(type => type.Name, type => type);
-            AggregateTypes = nonAbstractTypes.Where(typeof(IAggregateRoot).IsAssignableFrom)
+            BasicTypes.AggregateTypes = nonAbstractTypes.Where(typeof(IAggregateRoot).IsAssignableFrom)
                 .ToDictionary(type => type.Name, type => type);
-            PublishableExceptionTypes = nonAbstractTypes.Where(typeof(IPublishableException).IsAssignableFrom)
+            BasicTypes.PublishableExceptionTypes = nonAbstractTypes.Where(typeof(IPublishableException).IsAssignableFrom)
                 .ToDictionary(type => type.Name, type => type);
-            QueryTypes = nonAbstractTypes.Where(typeof(IQuery).IsAssignableFrom)
+            BasicTypes.QueryTypes = nonAbstractTypes.Where(typeof(IQuery).IsAssignableFrom)
                 .ToDictionary(type => type.Name, type => type);
 
             RegisterComponents(nonAbstractTypes);
@@ -154,6 +142,42 @@ namespace Umizoo.Configurations
             return Lifecycle.Singleton;
         }
 
+        internal void SetDefault(Type type, string name, object instance)
+        {
+            if (!_container.IsRegistered(type, name)) {
+                _container.RegisterInstance(type, instance, name);
+            }
+        }
+
+        internal void SetDefault(Type type, string name, Lifecycle lifecycle = Lifecycle.Singleton)
+        {
+            if (!_container.IsRegistered(type, name)) {
+                _container.RegisterType(type, name, lifecycle);
+            }
+        }
+
+        internal void SetDefault(Type from, Type to, string name, Lifecycle lifecycle = Lifecycle.Singleton)
+        {
+            if (!_container.IsRegistered(from, name)) {
+                _container.RegisterType(from, to, name, lifecycle);
+            }
+        }
+
+        internal void SetDefault<T>(T instance, string name = null)
+        {
+            SetDefault(typeof(T), name, instance);
+        }
+
+        internal void SetDefault<T>(string name = null, Lifecycle lifecycle = Lifecycle.Singleton)
+        {
+            SetDefault(typeof(T), name, lifecycle);
+        }
+
+        internal void SetDefault<TFrom, TTo>(string name = null, Lifecycle lifecycle = Lifecycle.Singleton)
+        {
+            SetDefault(typeof(TFrom), typeof(TTo), name, lifecycle);
+        }
+
         private void RegisterComponents(IEnumerable<Type> types)
         {
             types.Where(p => p.IsDefined(typeof(RegisterAttribute), false)).ForEach(implementerType =>
@@ -162,21 +186,26 @@ namespace Umizoo.Configurations
 
                 var attribute = implementerType.GetSingleAttribute<RegisterAttribute>(false);
                 if (attribute.ContactType == null)
-                    _container.RegisterType(implementerType, attribute.ContactName, lifecycle);
-                else _container.RegisterType(attribute.ContactType, implementerType, attribute.ContactName, lifecycle);
+                    SetDefault(implementerType, attribute.ContactName, lifecycle);
+                else
+                    SetDefault(attribute.ContactType, implementerType, attribute.ContactName, lifecycle);
             });
         }
 
 
         private void RegisterDefaultComponents()
         {
-            _container.RegisterInstance(TextSerializer.Instance);
-            _container.RegisterType<IEventStore, EventStoreInMemory>();
-            _container.RegisterType<IEventPublishedVersionStore, EventPublishedVersionInMemory>();
-            _container.RegisterType<ISnapshotStore, NoneSnapshotStore>();
-            _container.RegisterType<ICacheProvider, HashtableCacheProvider>();
-            _container.RegisterType<IRepository, Repository>();
-            _container.RegisterType<IResultManager, ResultManager>();
+            SetDefault(TextSerializer.Instance);
+            SetDefault<IAggregateStorage, AggregateStorageInMemory>();
+            SetDefault<IEventStore, EventStoreInMemory>();
+            SetDefault<IEventPublishedVersionStore, EventPublishedVersionInMemory>();
+            SetDefault<ISnapshotStore, NoneSnapshotStore>();
+            SetDefault<ICacheProvider, HashtableCacheProvider>();
+            SetDefault<IRepository, Repository>();
+            SetDefault<IResultManager, ResultManager>();
+
+            SetDefault<IEnvelopedMessageHandler<CommandResult>, ResultReplyHandler>();
+            SetDefault<IEnvelopedMessageHandler<QueryResult>, ResultReplyHandler>();
         }
 
         private static bool IsHandlerInterface(Type interfaceType)
@@ -192,14 +221,12 @@ namespace Umizoo.Configurations
 
         private void RegisterHandler(IEnumerable<Type> types)
         {
-            types.Where(typeof(IHandler).IsAssignableFrom).ForEach(handlerType =>
-            {
+            types.ForEach(handlerType => {
                 if (handlerType == typeof(ResultNotifyHandler) || handlerType == typeof(ResultReplyHandler))
                     return;
 
-                handlerType.GetInterfaces().Where(IsHandlerInterface).ForEach(contractType =>
-                {
-                    _container.RegisterType(contractType, handlerType, handlerType.FullName);
+                handlerType.GetInterfaces().Where(IsHandlerInterface).ForEach(contractType => {
+                    SetDefault(contractType, handlerType, handlerType.FullName);
                 });
             });
 

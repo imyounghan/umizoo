@@ -39,7 +39,7 @@ namespace Umizoo.Communication
 
                 Type type = null;
 
-                if (!Configuration.QueryTypes.TryGetValue(request.Header.GetIfKeyNotFound("Type"), out type))
+                if (!BasicTypes.QueryTypes.TryGetValue(request.Header.GetIfKeyNotFound("Type"), out type))
                 {
                     responseTask.SetResult(Response.UnknownType);
                     return CreateInnerAsyncResult(asyncCallback, asyncState);

@@ -5,18 +5,18 @@
 
 namespace Umizoo.Messaging.Handling
 {
-    public interface IQueryHandler : IHandler
-    { }
+    //public interface IQueryHandler : IHandler
+    //{ }
 
     /// <summary>
     /// 继承该接口的是查询执行器
     /// </summary>
-    public interface IQueryHandler<TQuery, TResult> : IQueryHandler
+    public interface IQueryHandler<TQuery, TResult>// : IQueryHandler
         where TQuery : IQuery
     {
         /// <summary>
         /// 获取结果
         /// </summary>
-        TResult Handle(TQuery parameter);
+        TResult Handle(TQuery query);
     }    
 }

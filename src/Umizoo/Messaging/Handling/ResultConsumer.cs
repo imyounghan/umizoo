@@ -15,47 +15,40 @@ namespace Umizoo.Messaging.Handling
 {
     public class ResultConsumer : Consumer<IResult>, IInitializer
     {
-        private readonly Dictionary<Type, IEnvelopedHandler> _resultHandlers;
+        private readonly Dictionary<Type, object> _resultHandlers;
 
         public ResultConsumer(IMessageReceiver<Envelope<IResult>> resultReceiver)
             : base(resultReceiver, ProcessingFlags.Result)
         {
-            _resultHandlers = new Dictionary<Type, IEnvelopedHandler>();
+            _resultHandlers = new Dictionary<Type, object>();
         }
 
         public void Initialize(IObjectContainer container, IEnumerable<Type> types)
         {
             types.Where(type => type.IsClass && !type.IsAbstract && typeof(IResult).IsAssignableFrom(type))
-                .ForEach(resultType =>
-            {
-                var handler = container.Resolve(typeof(IEnvelopedMessageHandler<>).MakeGenericType(resultType)) as IEnvelopedHandler;
-                if (handler == null)
-                {
-                    var errorMessage =
-                        string.Format("not found the handler of this type('{0}') with IEnvelopedMessageHandler<>.",
-                            resultType.FullName);
-                    LogManager.Default.Fatal(errorMessage);
-                    throw new SystemException(errorMessage);
-                }
+                .ForEach(resultType => {
+                    var handler = container.Resolve(typeof(IEnvelopedMessageHandler<>).MakeGenericType(resultType));
+                    if (handler == null) {
+                        var errorMessage =
+                            string.Format("not found the handler of this type('{0}') with IEnvelopedMessageHandler<>.",
+                                resultType.FullName);
+                        LogManager.Default.Fatal(errorMessage);
+                        throw new SystemException(errorMessage);
+                    }
 
-                _resultHandlers[resultType] = handler;
-            });
+                    _resultHandlers[resultType] = handler;
+                });
         }
 
         protected override void Dispose(bool disposing)
         {
         }
 
-        private Envelope Create(Envelope<IResult> envelope)
+        protected override void OnMessageReceived(Envelope<IResult> envelope)
         {
             var resultType = envelope.Body.GetType();
 
-            return (Envelope)Activator.CreateInstance(typeof(Envelope<>).MakeGenericType(resultType), envelope.Body, envelope.MessageId);
-        }
-
-        protected override void OnMessageReceived(Envelope<IResult> envelope)
-        {
-            ((dynamic)_resultHandlers[envelope.Body.GetType()]).Handle((dynamic)Create(envelope));
+            ((dynamic)_resultHandlers[resultType]).Handle((dynamic)Activator.CreateInstance(typeof(Envelope<>).MakeGenericType(resultType), envelope.Body, envelope.MessageId));
         }
     }
 }

@@ -8,6 +8,7 @@ using System.Linq;
 
 using Umizoo.Infrastructure;
 using Umizoo.Infrastructure.Caching;
+using Umizoo.Infrastructure.Database;
 using Umizoo.Infrastructure.Logging;
 using Umizoo.Messaging;
 
@@ -34,15 +35,15 @@ namespace Umizoo.Seeds
             _cacheProvider = cacheProvider;
         }
 
-        public void Delete(IAggregateRoot aggregateRoot)
-        {
-            Assertions.NotNull(aggregateRoot, "aggregateRoot");
+        //public void Delete(IAggregateRoot aggregateRoot)
+        //{
+        //    Assertions.NotNull(aggregateRoot, "aggregateRoot");
 
-            _storage.Delete(aggregateRoot);
+        //    _storage.Delete(aggregateRoot);
 
-            //var sourceInfo = new SourceInfo(aggregateRoot.Id, aggregateRoot.GetType());
-            //_eventStore.
-        }
+        //    //var sourceInfo = new SourceInfo(aggregateRoot.Id, aggregateRoot.GetType());
+        //    //_eventStore.
+        //}
 
 
 
@@ -257,6 +258,146 @@ namespace Umizoo.Seeds
         private static string GetCacheKey(Type type, string id)
         {
             return string.Format("Model:{0}:{1}", type.FullName, id);
+        }
+    }
+
+    /// <summary>
+    /// 仓储接口实现
+    /// </summary>
+    /// <typeparam name="TAggregateRoot">聚合类型</typeparam>
+    public class Repository<TAggregateRoot> : IRepository<TAggregateRoot>
+        where TAggregateRoot : class, IAggregateRoot
+    {
+        private readonly IDbContextFactory _dbContextFactory;
+        private readonly ICache _cache;
+
+        /// <summary>
+        /// Parameterized constructor.
+        /// </summary>
+        public Repository(IDbContextFactory dbContextFactory, ICacheProvider cacheProvider)
+        {
+            this._dbContextFactory = dbContextFactory;
+            this._cache = cacheProvider.GetCache(GetCacheRegion(typeof(TAggregateRoot)));
+        }
+
+        /// <summary>
+        /// 数据上下文
+        /// </summary>
+        protected IDbContext DbContext { get { return _dbContextFactory.GetCurrent(); } }
+        /// <summary>
+        /// 缓存程序
+        /// </summary>
+        protected ICache Cache { get { return this._cache; } }
+
+        private static string GetCacheRegion(Type type)
+        {
+            var attr = type.GetSingleAttribute<CacheRegionAttribute>(false);
+            if (attr.IsNull())
+                return CacheRegionAttribute.DefaultRegion;
+
+            return attr.RegionName;
+        }
+
+        private static string GetCacheKey(Type type, object id)
+        {
+            return string.Format("Model:{0}:{1}", type.FullName, id);
+        }
+
+        /// <summary>
+        /// 添加聚合根到仓储
+        /// </summary>
+        public virtual void Add(TAggregateRoot aggregateRoot)
+        {
+            DbContext.Insert(aggregateRoot);
+
+        }
+        void IRepository<TAggregateRoot>.Add(TAggregateRoot aggregateRoot)
+        {
+            this.Add(aggregateRoot);
+
+            DbContext.DataCommitted += (sender, args) => {
+                _cache.Put(GetCacheKey(typeof(TAggregateRoot), aggregateRoot.Id), aggregateRoot);
+            };
+
+            LogManager.Default.DebugFormat("the aggregate root {0} of id {1} is added the dbcontext.",
+                    typeof(TAggregateRoot).FullName, aggregateRoot.Id.ToString());
+        }
+        /// <summary>
+        /// 更新聚合到仓储
+        /// </summary>
+        public virtual void Update(TAggregateRoot aggregateRoot)
+        {
+            DbContext.Update(aggregateRoot);
+
+        }
+        void IRepository<TAggregateRoot>.Update(TAggregateRoot aggregateRoot)
+        {
+            this.Update(aggregateRoot);
+
+            DbContext.DataCommitted += (sender, args) => {
+                _cache.Put(GetCacheKey(typeof(TAggregateRoot), aggregateRoot.Id), aggregateRoot);
+            };
+
+            LogManager.Default.DebugFormat("the aggregate root {0} of id {1} is updated the dbcontext.",
+                    typeof(TAggregateRoot).FullName, aggregateRoot.Id.ToString());
+        }
+        /// <summary>
+        /// 从仓储中移除聚合
+        /// </summary>
+        public virtual void Remove(TAggregateRoot aggregateRoot)
+        {
+            DbContext.Delete(aggregateRoot);
+        }
+        void IRepository<TAggregateRoot>.Remove(TAggregateRoot aggregateRoot)
+        {
+            this.Remove(aggregateRoot);
+
+            DbContext.DataCommitted += (sender, args) => {
+                _cache.Remove(GetCacheKey(typeof(TAggregateRoot), aggregateRoot.Id));
+            };
+
+            LogManager.Default.DebugFormat("updated the aggregate root {0} of id {1} in dbcontext.",
+                   typeof(TAggregateRoot).FullName, aggregateRoot.Id.ToString());
+        }
+
+
+        ///// <summary>
+        ///// 根据标识id获得实体
+        ///// </summary>
+        //public TAggregateRoot Get<TIdentify>(TIdentify id)
+        //{
+        //    var aggregate = (this as IRepository<TAggregateRoot>).Find(id);
+        //    if (aggregate == null)
+        //        throw new EntityNotFoundException(id, typeof(TAggregateRoot));
+
+        //    return aggregate;
+        //}
+
+        /// <summary>
+        /// 根据标识id获取聚合实例，如未找到则返回null
+        /// </summary>
+        public virtual TAggregateRoot Find<TIdentify>(TIdentify id)
+        {
+            return DbContext.Get<TAggregateRoot>(id);
+        }
+        TAggregateRoot IRepository<TAggregateRoot>.Find<TIdentify>(TIdentify id)
+        {
+            var cacheKey = GetCacheKey(typeof(TAggregateRoot), id);
+            var aggregate = (TAggregateRoot)_cache.Get(cacheKey);
+            if (aggregate == null) {
+                aggregate = this.Find(id);
+                LogManager.Default.DebugFormat("find the aggregate root {0} of id {1} from storage.",
+                    typeof(TAggregateRoot).FullName, id.ToString());
+                if (aggregate != null) {
+                    _cache.Put(cacheKey, aggregate);
+                }
+            }
+            else {
+                LogManager.Default.DebugFormat("find the aggregate root {0} of id {1} from cache.",
+                    typeof(TAggregateRoot).FullName, id.ToString());
+            }
+
+            return aggregate;
         }
     }
 }
